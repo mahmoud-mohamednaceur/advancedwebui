@@ -13,15 +13,15 @@ export const clerkAppearance = {
     },
     elements: {
         // Main card styling
-        card: 'bg-surface/95 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/50',
-        headerTitle: 'text-text-light font-display text-2xl font-semibold',
+        card: 'bg-surface/60 backdrop-blur-2xl border border-white/10 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)]',
+        headerTitle: 'text-text-light font-display text-2xl font-bold tracking-tight',
         headerSubtitle: 'text-text-subtle',
 
         // Form elements
         formButtonPrimary:
             'bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-background font-semibold shadow-neon-primary hover:shadow-neon-primary hover:scale-[1.02] transition-all duration-300',
         formFieldInput:
-            'bg-surface-highlight border-white/10 text-text-light placeholder:text-text-subtle focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all',
+            'bg-surface-highlight border-white/10 text-text-light placeholder:text-text-subtle focus:border-primary focus:ring-2 focus:ring-primary/20 focus:shadow-[0_0_15px_rgba(126,249,255,0.15)] transition-all',
         formFieldLabel: 'text-text-light font-medium',
 
         // Divider
