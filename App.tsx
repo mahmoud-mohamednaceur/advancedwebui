@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
+import SignInPage from './components/auth/SignInPage';
+import SignUpPage from './components/auth/SignUpPage';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Workflow from './components/Workflow';
@@ -408,7 +410,53 @@ export const DEFAULT_STRATEGIES_CONFIG: Record<string, StrategyConfig> = {
 };
 
 const App: React.FC = () => {
-    const [currentView, setCurrentView] = useState<'landing' | 'app'>('landing');
+    const [currentView, setCurrentView] = useState<'landing' | 'app'>(() => {
+        const path = window.location.pathname;
+        return (path === '/sign-in' || path === '/sign-up') ? 'app' : 'landing';
+    });
+
+    const [path, setPath] = useState(window.location.pathname);
+    const { isSignedIn, isLoaded } = useAuth();
+
+    // Handle URL updates and history changes
+    useEffect(() => {
+        const handleLocationChange = () => {
+            setPath(window.location.pathname);
+        };
+
+        // Listen for popstate (back/forward)
+        window.addEventListener('popstate', handleLocationChange);
+
+        // Monkey patch pushState/replaceState to detect changes
+        const originalPushState = window.history.pushState.bind(window.history);
+        const originalReplaceState = window.history.replaceState.bind(window.history);
+
+        window.history.pushState = function (data: any, unused: string, url?: string | URL | null) {
+            originalPushState(data, unused, url);
+            handleLocationChange();
+        };
+
+        window.history.replaceState = function (data: any, unused: string, url?: string | URL | null) {
+            originalReplaceState(data, unused, url);
+            handleLocationChange();
+        };
+
+        return () => {
+            window.removeEventListener('popstate', handleLocationChange);
+            window.history.pushState = originalPushState;
+            window.history.replaceState = originalReplaceState;
+        };
+    }, []);
+
+    // Redirect to sign-in if accessing app while signed out and not on auth pages
+    useEffect(() => {
+        if (isLoaded && !isSignedIn && currentView === 'app') {
+            if (path !== '/sign-in' && path !== '/sign-up') {
+                window.history.replaceState({}, '', '/sign-in');
+                setPath('/sign-in');
+            }
+        }
+    }, [isLoaded, isSignedIn, currentView, path]);
 
     // App State
     const [appMode, setAppMode] = useState<AppMode>('global');
@@ -578,6 +626,7 @@ const App: React.FC = () => {
     };
 
     const handleStart = () => {
+        window.history.pushState({}, '', '/sign-in');
         setCurrentView('app');
         setAppMode('global');
         setActiveGlobalPage('dashboard');
@@ -672,7 +721,7 @@ const App: React.FC = () => {
         return (
             <>
                 <SignedOut>
-                    <RedirectToSignIn />
+                    {path === '/sign-up' ? <SignUpPage /> : <SignInPage />}
                 </SignedOut>
                 <SignedIn>
                     <div className="min-h-screen bg-background text-text-light font-sans flex overflow-hidden relative selection:bg-primary/20 selection:text-primary">
