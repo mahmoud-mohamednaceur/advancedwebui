@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, useAuth, useUser } from '@clerk/clerk-react';
 import SignInPage from './components/auth/SignInPage';
 import SignUpPage from './components/auth/SignUpPage';
 import Navbar from './components/Navbar';
@@ -20,6 +20,8 @@ import NotebookChat from './components/workspace/NotebookChat';
 import NotebookSettings from './components/workspace/NotebookSettings';
 import NotebookEmbeddingSetup from './components/workspace/NotebookEmbeddingSetup';
 import { Loader2 } from 'lucide-react';
+import { isAdmin, hasNotebookPermission, hasPagePermission } from './utils/admin';
+import GlobalSettings from './components/GlobalSettings';
 
 type AppMode = 'global' | 'workspace';
 
@@ -417,6 +419,8 @@ const App: React.FC = () => {
 
     const [path, setPath] = useState(window.location.pathname);
     const { isSignedIn, isLoaded } = useAuth();
+    const { user } = useUser();
+    const isUserAdmin = isAdmin(user);
 
     // Handle URL updates and history changes
     useEffect(() => {
@@ -634,6 +638,12 @@ const App: React.FC = () => {
     };
 
     const handleOpenNotebook = async (id: string, name: string, description: string = '') => {
+        // Check permission
+        if (!hasNotebookPermission(user, id)) {
+            alert("You do not have permission to access this notebook.");
+            return;
+        }
+
         setIsConfigLoading(true);
         try {
             setSelectedNotebookId(id);
@@ -742,6 +752,7 @@ const App: React.FC = () => {
                                     onNavigate={(page) => appMode === 'global' ? setActiveGlobalPage(page as GlobalPage) : setActiveWorkspacePage(page as WorkspacePage)}
                                     onBackToGlobal={handleBackToGlobal}
                                     notebookName={selectedNotebookName}
+                                    notebookId={selectedNotebookId || undefined}
                                 />
                             )}
 
@@ -772,12 +783,16 @@ const App: React.FC = () => {
                                             />
                                         )}
                                         {activeGlobalPage === 'settings' && (
-                                            <div className="flex items-center justify-center h-full text-text-subtle animate-fade-in-up">
-                                                <div className="text-center p-8 border border-dashed border-white/10 rounded-2xl bg-surface/20">
-                                                    <p>Global Settings Module</p>
-                                                    <span className="text-xs opacity-50">Coming Soon</span>
+                                            isUserAdmin ? (
+                                                <GlobalSettings />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-red-400 animate-fade-in-up">
+                                                    <div className="text-center p-8 border border-dashed border-red-500/20 rounded-2xl bg-red-500/5">
+                                                        <p>Access Denied</p>
+                                                        <span className="text-xs opacity-50">Admin privileges required</span>
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            )
                                         )}
                                     </>
                                 )}
@@ -794,38 +809,66 @@ const App: React.FC = () => {
                                             />
                                         )}
                                         {activeWorkspacePage === 'chat' && (
-                                            <NotebookChat
-                                                config={currentConfig}
-                                                notebookId={selectedNotebookId}
-                                                notebookName={selectedNotebookName}
-                                                onConfigChange={handleUpdateConfig}
-                                            />
+                                            hasPagePermission(user, 'chat') ? (
+                                                <NotebookChat
+                                                    config={currentConfig}
+                                                    notebookId={selectedNotebookId}
+                                                    notebookName={selectedNotebookName}
+                                                    onConfigChange={handleUpdateConfig}
+                                                />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-text-subtle">Access Denied</div>
+                                            )
                                         )}
                                         {activeWorkspacePage === 'documents' && (
-                                            <NotebookDocuments
-                                                notebookId={selectedNotebookId}
-                                                notebookName={selectedNotebookName}
-                                                notebookDescription={selectedNotebookDescription}
-                                                config={currentConfig}
-                                            />
+                                            hasPagePermission(user, 'documents') ? (
+                                                <NotebookDocuments
+                                                    notebookId={selectedNotebookId}
+                                                    notebookName={selectedNotebookName}
+                                                    notebookDescription={selectedNotebookDescription}
+                                                    config={currentConfig}
+                                                />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-red-400 animate-fade-in-up">
+                                                    <div className="text-center p-8 border border-dashed border-red-500/20 rounded-2xl bg-red-500/5">
+                                                        <p>Access Denied</p>
+                                                        <span className="text-xs opacity-50">Permission required</span>
+                                                    </div>
+                                                </div>
+                                            )
                                         )}
                                         {activeWorkspacePage === 'search' && (
-                                            <PlaygroundSearch
-                                                notebookId={selectedNotebookId}
-                                                config={currentConfig}
-                                                onConfigChange={handleUpdateConfig}
-                                            />
+                                            hasPagePermission(user, 'search') ? (
+                                                <PlaygroundSearch
+                                                    notebookId={selectedNotebookId}
+                                                    config={currentConfig}
+                                                    onConfigChange={handleUpdateConfig}
+                                                />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-text-subtle">Access Denied</div>
+                                            )
                                         )}
-                                        {activeWorkspacePage === 'chart' && <PlaygroundChart />}
+                                        {activeWorkspacePage === 'chart' && (
+                                            hasPagePermission(user, 'chart') ? <PlaygroundChart /> : <div className="flex items-center justify-center h-full text-text-subtle">Access Denied</div>
+                                        )}
                                         {activeWorkspacePage === 'settings' && (
-                                            <NotebookSettings
-                                                key={selectedNotebookId}
-                                                notebookId={selectedNotebookId}
-                                                notebookName={selectedNotebookName}
-                                                config={currentConfig}
-                                                onConfigChange={handleUpdateConfig}
-                                                defaultStrategies={DEFAULT_STRATEGIES_CONFIG}
-                                            />
+                                            hasPagePermission(user, 'settings') ? (
+                                                <NotebookSettings
+                                                    key={selectedNotebookId}
+                                                    notebookId={selectedNotebookId}
+                                                    notebookName={selectedNotebookName}
+                                                    config={currentConfig}
+                                                    onConfigChange={handleUpdateConfig}
+                                                    defaultStrategies={DEFAULT_STRATEGIES_CONFIG}
+                                                />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-red-400 animate-fade-in-up">
+                                                    <div className="text-center p-8 border border-dashed border-red-500/20 rounded-2xl bg-red-500/5">
+                                                        <p>Access Denied</p>
+                                                        <span className="text-xs opacity-50">Permission required</span>
+                                                    </div>
+                                                </div>
+                                            )
                                         )}
                                     </>
                                 )}

@@ -1,0 +1,524 @@
+import React, { useState, useEffect } from 'react';
+import { X, Loader2, Save, ChevronDown, Check, Search, Building2, Database, Shield, Settings, Info } from 'lucide-react';
+import { useUser } from '@clerk/clerk-react';
+
+interface AccessControlSetting {
+    id: string;
+    name: string;
+    enabled: boolean;
+}
+
+interface UserPermissionsModalProps {
+    user: any;
+    onClose: () => void;
+    onSave: () => void;
+}
+
+// Reusable Modern Toggle Switch
+const ToggleSwitch = ({ checked, onChange, label }: { checked: boolean, onChange: () => void, label?: string }) => (
+    <label className="flex items-center gap-3 cursor-pointer group">
+        <div className="relative">
+            <input type="checkbox" className="sr-only" checked={checked} onChange={onChange} />
+            <div className={`w-10 h-6 rounded-full transition-all duration-300 border ${checked ? 'bg-primary border-primary shadow-[0_0_10px_rgba(var(--primary-rgb),0.3)]' : 'bg-white/5 border-white/10 group-hover:border-white/20'}`}></div>
+            <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform duration-300 shadow-sm ${checked ? 'translate-x-4' : 'translate-x-0 opacity-50'}`}></div>
+        </div>
+        {label && <span className={`text-sm font-medium transition-colors ${checked ? 'text-white' : 'text-text-subtle group-hover:text-white/70'}`}>{label}</span>}
+    </label>
+);
+
+const UserPermissionsModal: React.FC<UserPermissionsModalProps> = ({ user, onClose, onSave }) => {
+    const { user: currentAdmin } = useUser(); // Get current admin making changes
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [notebooks, setNotebooks] = useState<any[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    // Permission States
+    const [notebookPermissions, setNotebookPermissions] = useState<Record<string, string[]>>({});
+    const [globalAllowedPages, setGlobalAllowedPages] = useState<string[]>([]);
+    const [accessControlSettings, setAccessControlSettings] = useState<AccessControlSetting[]>([]);
+
+    // UI State
+    const [expandedNotebooks, setExpandedNotebooks] = useState<string[]>([]);
+    const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+
+    // Constants
+    const GLOBAL_PAGES = [
+        { id: 'dashboard', label: 'Main Dashboard' },
+        { id: 'notebooks', label: 'All Notebooks View' },
+    ];
+
+    const NOTEBOOK_SUBPAGES = [
+        { id: 'home', label: 'Overview' },
+        { id: 'chat', label: 'Chat Interface' },
+        { id: 'documents', label: 'Document Manager' },
+        { id: 'search', label: 'Search Playground' },
+        { id: 'chart', label: 'Analytics' },
+        { id: 'settings', label: 'Configuration' },
+    ];
+
+    useEffect(() => {
+        initPermissions();
+        fetchNotebooks();
+        fetchAccessControlSettings();
+    }, [user]);
+
+    const initPermissions = () => {
+        if (!user?.publicMetadata) return;
+
+        setGlobalAllowedPages(user.publicMetadata.allowed_pages || []);
+
+        if (user.publicMetadata.notebook_permissions) {
+            setNotebookPermissions(user.publicMetadata.notebook_permissions);
+        } else {
+            const legacyNotebooks = user.publicMetadata.allowed_notebooks || [];
+            if (Array.isArray(legacyNotebooks)) {
+                const newPerms: Record<string, string[]> = {};
+                legacyNotebooks.forEach((nbId: string) => {
+                    newPerms[nbId] = NOTEBOOK_SUBPAGES.map(p => p.id);
+                });
+                setNotebookPermissions(newPerms);
+            }
+        }
+    };
+
+    const fetchNotebooks = async () => {
+        setIsLoading(true);
+        try {
+            const ORCHESTRATOR_ID = '301f7482-1430-466d-9721-396564618751';
+            const PULL_NOTEBOOKS_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/22e943ae-6bc7-43b3-9ca4-16bdc715a84b-pull-notebooks';
+
+            const response = await fetch(PULL_NOTEBOOKS_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orchestrator_id: ORCHESTRATOR_ID, user_id: user?.id })
+            });
+
+            if (response.ok) {
+                const listRaw = await response.json();
+                let listData = [];
+                if (Array.isArray(listRaw)) listData = listRaw;
+                else if (listRaw.data && Array.isArray(listRaw.data)) listData = listRaw.data;
+                else if (listRaw.json) listData = [listRaw.json];
+                else listData = [listRaw];
+
+                const notebooksList = listData
+                    .map((item: any) => item.json ? item.json : item)
+                    .filter((d: any) => d && (d.notebook_id || d.id))
+                    .map((item: any) => ({
+                        id: item.notebook_id || item.id,
+                        title: item.notebook_title || item.title || 'Untitled Notebook'
+                    }));
+
+                setNotebooks(notebooksList);
+            }
+        } catch (error) {
+            console.error("Failed to fetch notebooks:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const fetchAccessControlSettings = async () => {
+        setIsLoadingSettings(true);
+        try {
+            const LOAD_SETTINGS_URL = 'https://n8nserver.sportnavi.de/webhook/0d0c4dae-ade4-4810-b3ba-d4173098fa7a-load-admin-access-control-settings';
+
+            const response = await fetch(LOAD_SETTINGS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: user?.id })
+            });
+
+            if (response.ok) {
+                const settingsData = await response.json();
+                let settings: AccessControlSetting[] = [];
+
+                // Handle different response formats
+                if (Array.isArray(settingsData)) {
+                    settings = settingsData;
+                } else if (settingsData.data && Array.isArray(settingsData.data)) {
+                    settings = settingsData.data;
+                } else if (settingsData.json) {
+                    settings = Array.isArray(settingsData.json) ? settingsData.json : [settingsData.json];
+                }
+
+                setAccessControlSettings(settings);
+            }
+        } catch (error) {
+            console.error("Failed to fetch access control settings:", error);
+        } finally {
+            setIsLoadingSettings(false);
+        }
+    };
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            const legacyAllowedNotebooks = Object.keys(notebookPermissions);
+
+            // Save to the original API for backward compatibility
+            const response = await fetch('/api/update-permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: user.id,
+                    permissions: {
+                        notebook_permissions: notebookPermissions,
+                        allowed_notebooks: legacyAllowedNotebooks,
+                        allowed_pages: globalAllowedPages,
+                        role: user.publicMetadata?.role
+            console.error("Error saving permissions:", error);
+                        alert("Failed to save permissions");
+                    } finally {
+                        setIsSaving(false);
+                    }
+                };
+
+                const toggleNotebook = (nbId: string) => {
+                    setNotebookPermissions(prev => {
+                        const next = { ...prev };
+                        if (next[nbId]) {
+                            delete next[nbId];
+                        } else {
+                            next[nbId] = NOTEBOOK_SUBPAGES.map(p => p.id);
+                            setExpandedNotebooks(curr => [...curr, nbId]);
+                        }
+                        return next;
+                    });
+                };
+
+                const toggleNotebookPage = (nbId: string, pageId: string) => {
+                    setNotebookPermissions(prev => {
+                        const currentPages = prev[nbId] || [];
+                        const exists = currentPages.includes(pageId);
+                        const newPages = exists
+                            ? currentPages.filter(p => p !== pageId)
+                            : [...currentPages, pageId];
+
+                        return {
+                            ...prev,
+                            [nbId]: newPages
+                        };
+                    });
+                };
+
+                const toggleGlobalPage = (pageId: string) => {
+                    setGlobalAllowedPages(prev =>
+                        prev.includes(pageId) ? prev.filter(p => p !== pageId) : [...prev, pageId]
+                    );
+                };
+
+                const toggleExpand = (nbId: string) => {
+                    setExpandedNotebooks(prev =>
+                        prev.includes(nbId) ? prev.filter(id => id !== nbId) : [...prev, nbId]
+                    );
+                };
+
+                const toggleAccessControlSetting = (settingId: string) => {
+                    setAccessControlSettings(prev =>
+                        prev.map(setting =>
+                            setting.id === settingId
+                                ? { ...setting, enabled: !setting.enabled }
+                                : setting
+                        )
+                    );
+                };
+
+                const filteredNotebooks = notebooks.filter(nb =>
+                    (nb.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (nb.id || '').toLowerCase().includes(searchTerm.toLowerCase())
+                );
+
+                // Calculate stats
+                const totalNotebooks = notebooks.length;
+                const accessibleNotebooks = Object.keys(notebookPermissions).length;
+
+                return(
+        <div className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in" >
+                        <div className="bg-[#0A0A0F]/95 backdrop-blur-2xl border border-white/10 rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden relative">
+
+                            {/* Decorative Elements */}
+                            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
+                            <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-secondary/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
+
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-8 border-b border-white/5">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-primary shadow-lg shadow-primary/10">
+                                        <Shield className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white tracking-tight">Access Control</h2>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></span>
+                                            <p className="text-sm font-medium text-text-subtle">
+                                                Editing <span className="text-white">{user.firstName} {user.lastName}</span>
+                                            </p>
+                                        </div>
+                                        <p className="text-xs text-text-subtle/70 mt-1.5 flex items-center gap-1.5">
+                                            <Info className="w-3 h-3" />
+                                            Manage notebook access and feature permissions for this user
+                                        </p>
+                                    </div>
+                                </div>
+                                <button onClick={onClose} className="p-3 rounded-xl hover:bg-white/5 text-text-subtle hover:text-white transition-colors border border-transparent hover:border-white/5">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+                                <div className="space-y-10">
+
+                                    {/* 1. Global Platform Access */}
+                                    <section className="animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Building2 className="w-4 h-4 text-primary" />
+                                            <h3 className="text-xs font-bold text-text-subtle uppercase tracking-widest">Global Platform Access</h3>
+                                        </div>
+                                        <p className="text-xs text-text-subtle/60 mb-6 flex items-start gap-2">
+                                            <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                            <span>Controls access to system-wide pages like dashboard and notebooks overview</span>
+                                        </p>
+                                        <div className="flex items-center gap-2 mb-6 hidden">
+                                            <Building2 className="w-4 h-4 text-primary" />
+                                            <h3 className="text-xs font-bold text-text-subtle uppercase tracking-widest">Global Platform Access</h3>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            {GLOBAL_PAGES.map(page => (
+                                                <div key={page.id} className={`
+                                        flex items-center justify-between p-4 rounded-2xl border transition-all duration-300
+                                        ${globalAllowedPages.includes(page.id)
+                                                        ? 'bg-surface/50 border-white/10 shadow-lg'
+                                                        : 'bg-white/[0.02] border-white/5 opacity-80'}
+                                    `}>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-bold text-white mb-0.5">{page.label}</span>
+                                                        <span className="text-[10px] text-text-subtle">System Level Permission</span>
+                                                    </div>
+                                                    <ToggleSwitch
+                                                        checked={globalAllowedPages.includes(page.id)}
+                                                        onChange={() => toggleGlobalPage(page.id)}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </section>
+
+                                    <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+
+                                    {/* 2. Access Control Settings */}
+                                    <section className="animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Settings className="w-4 h-4 text-accent" />
+                                            <h3 className="text-xs font-bold text-text-subtle uppercase tracking-widest">System Configuration</h3>
+                                        </div>
+                                        <p className="text-xs text-text-subtle/60 mb-6 flex items-start gap-2">
+                                            <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                            <span>Toggle feature flags and experimental features for this user</span>
+                                        </p>
+                                        <div className="flex items-center gap-2 mb-6 hidden">
+                                            <div className="flex items-center gap-2 mb-6">
+                                                <Settings className="w-4 h-4 text-accent" />
+                                                <h3 className="text-xs font-bold text-text-subtle uppercase tracking-widest">System Configuration</h3>
+                                            </div>
+
+                                            {isLoadingSettings ? (
+                                                <div className="flex items-center justify-center py-10 gap-3">
+                                                    <Loader2 className="w-6 h-6 text-accent animate-spin" />
+                                                    <p className="text-text-subtle text-sm animate-pulse">Loading configuration...</p>
+                                                </div>
+                                            ) : accessControlSettings.length === 0 ? (
+                                                <div className="py-10 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
+                                                    <Settings className="w-10 h-10 text-text-subtle/20 mx-auto mb-3" />
+                                                    <p className="text-text-subtle text-sm">No configuration settings available.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    {accessControlSettings.map(setting => (
+                                                        <div key={setting.id} className={`
+                                            flex items-center justify-between p-4 rounded-2xl border transition-all duration-300
+                                            ${setting.enabled
+                                                                ? 'bg-surface/50 border-white/10 shadow-lg'
+                                                                : 'bg-white/[0.02] border-white/5 opacity-80'
+                                                            }
+                                        `}>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-sm font-bold text-white mb-0.5">{setting.name}</span>
+                                                                <span className="text-[10px] text-text-subtle font-mono">{setting.id}</span>
+                                                            </div>
+                                                            <ToggleSwitch
+                                                                checked={setting.enabled}
+                                                                onChange={() => toggleAccessControlSetting(setting.id)}
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                    </section>
+
+                                    <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+
+                                    {/* 3. Granular Notebook Permissions */}
+                                    <section className="animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Database className="w-4 h-4 text-secondary" />
+                                            <h3 className="text-xs font-bold text-text-subtle uppercase tracking-widest">Notebook Contexts</h3>
+                                            <span className="ml-auto text-[10px] px-2.5 py-1 rounded-lg bg-secondary/10 text-secondary border border-secondary/20 font-mono">
+                                                {accessibleNotebooks}/{totalNotebooks} accessible
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-text-subtle/60 mb-6 flex items-start gap-2">
+                                            <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                            <span>Grant access to specific notebooks and control which features are available within each context</span>
+                                        </p>
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                                            <div className="flex items-center gap-2 hidden">
+                                                <Database className="w-4 h-4 text-secondary" />
+                                                <h3 className="text-xs font-bold text-text-subtle uppercase tracking-widest">Notebook Contexts</h3>
+                                            </div>
+                                            <div className="relative group">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-subtle group-focus-within:text-white transition-colors" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search contexts..."
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    className="w-full sm:w-64 bg-black/20 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all placeholder-text-subtle/50"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {isLoading ? (
+                                            <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                                                <p className="text-text-subtle text-sm animate-pulse">Syncing contexts from orchestrator...</p>
+                                            </div>
+                                        ) : filteredNotebooks.length === 0 ? (
+                                            <div className="py-20 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
+                                                <Database className="w-10 h-10 text-text-subtle/20 mx-auto mb-3" />
+                                                <p className="text-text-subtle text-sm">No notebooks found matching your search.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {filteredNotebooks.map((nb, idx) => {
+                                                    const hasAccess = !!notebookPermissions[nb.id];
+                                                    const isExpanded = expandedNotebooks.includes(nb.id);
+                                                    const allowedSubPages = notebookPermissions[nb.id] || [];
+
+                                                    return (
+                                                        <div
+                                                            key={nb.id}
+                                                            className={`
+                                                    rounded-2xl border transition-all duration-300 overflow-hidden group
+                                                    ${hasAccess
+                                                                    ? 'bg-surface/40 border-primary/20 shadow-[0_0_20px_rgba(0,0,0,0.2)]'
+                                                                    : 'bg-white/[0.02] border-white/5 hover:border-white/10'}
+                                                `}
+                                                            style={{ animationDelay: `${0.1 + (idx * 0.05)}s` }}
+                                                        >
+                                                            {/* Notebook Row */}
+                                                            <div className="flex items-center p-4 gap-4">
+                                                                <ToggleSwitch
+                                                                    checked={hasAccess}
+                                                                    onChange={() => toggleNotebook(nb.id)}
+                                                                />
+
+                                                                <div className="flex-1 cursor-pointer" onClick={() => hasAccess ? toggleExpand(nb.id) : toggleNotebook(nb.id)}>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <h4 className={`text-base font-bold transition-colors ${hasAccess ? 'text-white' : 'text-text-subtle group-hover:text-white/80'}`}>
+                                                                            {nb.title}
+                                                                        </h4>
+                                                                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 text-text-subtle font-mono border border-white/5 opacity-50">
+                                                                            {nb.id.slice(0, 6)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {hasAccess && (
+                                                                    <button
+                                                                        onClick={() => toggleExpand(nb.id)}
+                                                                        className={`p-2 rounded-lg hover:bg-white/5 text-text-subtle hover:text-white transition-all duration-300 ${isExpanded ? 'rotate-180 bg-white/5' : ''}`}
+                                                                    >
+                                                                        <ChevronDown className="w-5 h-5" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Collapsible Features */}
+                                                            <div className={`grid transition-all duration-300 ease-in-out ${hasAccess && isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                                                                <div className="overflow-hidden">
+                                                                    <div className="px-4 pb-4 pt-0">
+                                                                        <div className="p-4 rounded-xl bg-black/20 border border-white/5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                                            {NOTEBOOK_SUBPAGES.map(subpage => {
+                                                                                const isAllowed = allowedSubPages.includes(subpage.id);
+                                                                                return (
+                                                                                    <label
+                                                                                        key={subpage.id}
+                                                                                        className={`
+                                                                                flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border
+                                                                                ${isAllowed
+                                                                                                ? 'bg-primary/5 border-primary/20'
+                                                                                                : 'bg-transparent border-transparent hover:bg-white/5'}
+                                                                            `}
+                                                                                    >
+                                                                                        <div className={`
+                                                                                w-5 h-5 rounded-md border flex items-center justify-center transition-all duration-200
+                                                                                ${isAllowed
+                                                                                                ? 'bg-primary border-primary text-black'
+                                                                                                : 'border-white/20 bg-transparent group-hover:border-white/40'}
+                                                                            `}>
+                                                                                            {isAllowed && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
+                                                                                        </div>
+                                                                                        <span className={`text-xs font-medium ${isAllowed ? 'text-white' : 'text-text-subtle'}`}>
+                                                                                            {subpage.label}
+                                                                                        </span>
+                                                                                        <input
+                                                                                            type="checkbox"
+                                                                                            className="hidden"
+                                                                                            checked={isAllowed}
+                                                                                            onChange={() => toggleNotebookPage(nb.id, subpage.id)}
+                                                                                        />
+                                                                                    </label>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                        <p className="text-[10px] text-text-subtle/50 text-right mt-2 pr-1">
+                                                                            Toggle specific features for this user in this notebook.
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </section>
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-6 border-t border-white/5 bg-[#0A0A0F]/50 backdrop-blur-xl flex justify-end gap-3 z-10">
+                                <button
+                                    onClick={onClose}
+                                    className="px-6 py-2.5 rounded-xl border border-white/10 text-sm font-bold text-text-subtle hover:text-white hover:bg-white/5 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSave}
+                                    disabled={isSaving}
+                                    className="group flex items-center gap-2 px-8 py-2.5 bg-primary hover:bg-primary/90 text-black text-sm font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.5)] hover:-translate-y-0.5"
+                                >
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                    Save Changes
+                                </button>
+                            </div>
+                        </div>
+        </div >
+    );
+};
+
+export default UserPermissionsModal;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import {
     Search,
     Database,
@@ -357,6 +358,7 @@ interface DashboardPageProps {
 }
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegisterEmbedding }) => {
+    const { user } = useUser();
     const [notebooks, setNotebooks] = useState<NotebookData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -385,7 +387,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
             const response = await fetch(DELETE_NOTEBOOK_WEBHOOK_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notebook_id: notebookToDelete, orchestrator_id: ORCHESTRATOR_ID })
+                body: JSON.stringify({ notebook_id: notebookToDelete, orchestrator_id: ORCHESTRATOR_ID, user_id: user?.id })
             });
 
             if (response.ok) {
@@ -418,7 +420,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
                 notebook_description: data.description || '',
                 number_of_documents: 0,
                 created_at: now,
-                updated_at: now
+                updated_at: now,
+                user_id: user?.id
             };
 
             const response = await fetch(CREATE_NOTEBOOK_WEBHOOK_URL, {
@@ -468,7 +471,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
             const listResponse = await fetch(PULL_NOTEBOOKS_WEBHOOK_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orchestrator_id: ORCHESTRATOR_ID })
+                body: JSON.stringify({ orchestrator_id: ORCHESTRATOR_ID, user_id: user?.id })
             });
 
             if (!listResponse.ok) return;
@@ -490,7 +493,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
                     const detailRes = await fetch(NOTEBOOK_DETAILS_WEBHOOK_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notebook_id: nId })
+                        body: JSON.stringify({ notebook_id: nId, user_id: user?.id })
                     });
                     if (detailRes.ok) {
                         const detailRaw = await detailRes.json();

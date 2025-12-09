@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import { createPortal } from 'react-dom';
-import { 
-    FileText, CheckCircle2, Loader2, Clock, AlertCircle, 
-    Search, Plus, RefreshCw, File as FileIcon, 
+import {
+    FileText, CheckCircle2, Loader2, Clock, AlertCircle,
+    Search, Plus, RefreshCw, File as FileIcon,
     LayoutGrid, List as ListIcon, Database, ArrowRight, Trash2, FolderOpen,
     X, Cloud, Server, Upload, CheckSquare, Square, Share2, Settings2, FileUp, ChevronRight,
     ScanText, Sparkles, Zap, Brain, Code, FileType, HardDrive, Info, Scissors, Maximize, Minimize, Layers, Link, Sliders,
@@ -92,36 +93,36 @@ const StatusBadge = ({ status, error }: { status: Document['status'] | string, e
     // Use the actual status text if available, fallback to Pending
     const rawStatus = status || 'Pending';
     const s = rawStatus.toLowerCase();
-    
+
     // Default styling (Unknown/Pending)
-    let config = { 
-        icon: Clock, 
-        color: 'text-amber-400', 
-        bg: 'bg-amber-400/10', 
-        border: 'border-amber-400/20' 
+    let config = {
+        icon: Clock,
+        color: 'text-amber-400',
+        bg: 'bg-amber-400/10',
+        border: 'border-amber-400/20'
     };
 
     // Determine style based on keywords found in the status string
     if (['completed', 'success', 'finished', 'done', 'active', 'ready'].some(k => s.includes(k))) {
-        config = { 
-            icon: CheckCircle2, 
-            color: 'text-emerald-400', 
-            bg: 'bg-emerald-400/10', 
-            border: 'border-emerald-400/20' 
+        config = {
+            icon: CheckCircle2,
+            color: 'text-emerald-400',
+            bg: 'bg-emerald-400/10',
+            border: 'border-emerald-400/20'
         };
     } else if (['processing', 'running', 'ingesting', 'syncing', 'in_progress', 'generating', 'enriching', 'chunking', 'embedding'].some(k => s.includes(k))) {
-        config = { 
-            icon: Loader2, 
-            color: 'text-blue-400', 
-            bg: 'bg-blue-400/10', 
-            border: 'border-blue-400/20' 
+        config = {
+            icon: Loader2,
+            color: 'text-blue-400',
+            bg: 'bg-blue-400/10',
+            border: 'border-blue-400/20'
         };
     } else if (['error', 'failed', 'failure'].some(k => s.includes(k))) {
-        config = { 
-            icon: AlertCircle, 
-            color: 'text-red-400', 
-            bg: 'bg-red-400/10', 
-            border: 'border-red-400/20' 
+        config = {
+            icon: AlertCircle,
+            color: 'text-red-400',
+            bg: 'bg-red-400/10',
+            border: 'border-red-400/20'
         };
     }
 
@@ -140,21 +141,21 @@ const StatusBadge = ({ status, error }: { status: Document['status'] | string, e
 
 // --- HELPER COMPONENTS ---
 
-const SelectionCard = ({ 
-    icon: Icon, 
-    title, 
-    description, 
-    selected, 
-    onClick, 
-    disabled, 
-    badge 
+const SelectionCard = ({
+    icon: Icon,
+    title,
+    description,
+    selected,
+    onClick,
+    disabled,
+    badge
 }: any) => (
-    <div 
+    <div
         onClick={() => !disabled && onClick()}
         className={`relative p-5 rounded-xl border transition-all duration-200 flex flex-col gap-3 text-left h-full
             ${disabled ? 'opacity-50 cursor-not-allowed bg-surface/20 border-white/5' : 'cursor-pointer'}
-            ${selected && !disabled 
-                ? 'bg-primary/5 border-primary shadow-[0_0_15px_rgba(126,249,255,0.1)]' 
+            ${selected && !disabled
+                ? 'bg-primary/5 border-primary shadow-[0_0_15px_rgba(126,249,255,0.1)]'
                 : !disabled ? 'bg-surface border-white/10 hover:border-white/20 hover:bg-surface-highlight' : ''}
         `}
     >
@@ -163,13 +164,13 @@ const SelectionCard = ({
                 <CheckCircle2 className="w-3 h-3" />
             </div>
         )}
-        
+
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center border
             ${selected && !disabled ? 'bg-primary/20 border-primary/20 text-primary' : 'bg-white/5 border-white/5 text-text-subtle'}
         `}>
             <Icon className="w-5 h-5" />
         </div>
-        
+
         <div>
             <h4 className={`text-sm font-bold mb-1.5 ${selected ? 'text-white' : 'text-gray-200'}`}>{title}</h4>
             <p className="text-[11px] text-text-subtle leading-relaxed">{description}</p>
@@ -177,7 +178,7 @@ const SelectionCard = ({
 
         {badge && (
             <div className="mt-auto pt-3">
-                 <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/5 border border-white/5 w-fit">
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/5 border border-white/5 w-fit">
                     <AlertCircle className="w-3 h-3 text-text-subtle" />
                     <span className="text-[9px] text-text-subtle">{badge}</span>
                 </div>
@@ -194,22 +195,22 @@ const PipelineProgress = ({ stage, status }: { stage: string | null, status: str
 
     return (
         <div className="w-full bg-[#0A0A0F] border border-white/5 rounded-3xl p-10 relative overflow-hidden mb-8 shadow-2xl animate-fade-in-up group">
-             {/* Background Effects */}
+            {/* Background Effects */}
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent opacity-50 pointer-events-none"></div>
             <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-primary/20 to-transparent"></div>
-            
+
             <div className="relative z-10 flex flex-col items-center justify-center gap-4 text-center">
-                
+
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-text-subtle uppercase tracking-[0.2em]">Pipeline Stage</span>
                 </div>
 
                 <h3 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/50 tracking-tighter drop-shadow-2xl">
-                     {displayStage}
+                    {displayStage}
                 </h3>
 
                 {isProcessing && (
-                     <div className="mt-4 flex flex-col items-center gap-3">
+                    <div className="mt-4 flex flex-col items-center gap-3">
                         <div className="h-1 w-32 bg-white/10 rounded-full overflow-hidden">
                             <div className="h-full w-full bg-primary/50 origin-left animate-[shimmer_1.5s_infinite]"></div>
                         </div>
@@ -217,21 +218,21 @@ const PipelineProgress = ({ stage, status }: { stage: string | null, status: str
                             <Loader2 className="w-3 h-3 animate-spin" />
                             <span>Processing...</span>
                         </div>
-                     </div>
+                    </div>
                 )}
-                
+
                 {status === 'success' && (
-                     <div className="mt-4 flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-wider animate-scale-in">
-                         <CheckCircle2 className="w-4 h-4" />
-                         <span>Ready for Retrieval</span>
-                     </div>
+                    <div className="mt-4 flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-wider animate-scale-in">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Ready for Retrieval</span>
+                    </div>
                 )}
 
                 {status === 'error' && (
-                     <div className="mt-4 flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-wider animate-scale-in">
-                         <AlertCircle className="w-4 h-4" />
-                         <span>Pipeline Failed</span>
-                     </div>
+                    <div className="mt-4 flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-wider animate-scale-in">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>Pipeline Failed</span>
+                    </div>
                 )}
 
             </div>
@@ -249,6 +250,7 @@ interface ErrorDetailsModalProps {
 }
 
 const ErrorDetailsModal: React.FC<ErrorDetailsModalProps> = ({ notebookId, doc, onClose }) => {
+    const { user } = useUser();
     const [isLoading, setIsLoading] = useState(false);
     const [errorData, setErrorData] = useState<any>(null);
 
@@ -264,7 +266,8 @@ const ErrorDetailsModal: React.FC<ErrorDetailsModalProps> = ({ notebookId, doc, 
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         notebook_id: notebookId,
-                        file_id: doc.fileId || doc.id
+                        file_id: doc.fileId || doc.id,
+                        user_id: user?.id
                     })
                 });
 
@@ -272,7 +275,7 @@ const ErrorDetailsModal: React.FC<ErrorDetailsModalProps> = ({ notebookId, doc, 
                     const data = await response.json();
                     let details = Array.isArray(data) ? data[0] : data;
                     if (details.json) details = details.json;
-                    
+
                     // Parse the error_description string
                     if (details.error_description && typeof details.error_description === 'string') {
                         try {
@@ -284,9 +287,9 @@ const ErrorDetailsModal: React.FC<ErrorDetailsModalProps> = ({ notebookId, doc, 
                         }
                     } else if (doc.error) {
                         // Fallback to error in doc object if webhook returns nothing useful
-                         details.parsedError = { message: doc.error };
+                        details.parsedError = { message: doc.error };
                     }
-                    
+
                     setErrorData(details);
                 }
             } catch (err) {
@@ -309,22 +312,22 @@ const ErrorDetailsModal: React.FC<ErrorDetailsModalProps> = ({ notebookId, doc, 
     return createPortal(
         <div className="fixed inset-0 z-[130] bg-[#050508]/90 backdrop-blur-sm animate-fade-in flex items-center justify-center p-4">
             <div className="bg-[#0A0A0F] border border-red-500/30 w-full max-w-3xl rounded-2xl shadow-[0_0_50px_rgba(239,68,68,0.1)] flex flex-col max-h-[90vh] overflow-hidden relative animate-scale-in">
-                
+
                 {/* Header */}
                 <div className="p-6 border-b border-white/10 flex items-center justify-between bg-red-500/5">
                     <div className="flex items-center gap-4">
-                         <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 shadow-inner">
+                        <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 shadow-inner">
                             <ShieldAlert className="w-6 h-6" />
-                         </div>
-                         <div>
-                             <h2 className="text-xl font-bold text-white">Ingestion Error</h2>
-                             <div className="flex items-center gap-2 mt-1">
-                                 <span className="text-xs font-mono text-text-subtle bg-white/5 px-1.5 py-0.5 rounded border border-white/5">{doc.name}</span>
-                                 {errorData?.file_type && (
-                                     <span className="text-[10px] font-mono text-text-subtle/70">{errorData.file_type}</span>
-                                 )}
-                             </div>
-                         </div>
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-white">Ingestion Error</h2>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs font-mono text-text-subtle bg-white/5 px-1.5 py-0.5 rounded border border-white/5">{doc.name}</span>
+                                {errorData?.file_type && (
+                                    <span className="text-[10px] font-mono text-text-subtle/70">{errorData.file_type}</span>
+                                )}
+                            </div>
+                        </div>
                     </div>
                     <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 text-text-subtle hover:text-white transition-colors">
                         <X className="w-5 h-5" />
@@ -354,20 +357,20 @@ const ErrorDetailsModal: React.FC<ErrorDetailsModalProps> = ({ notebookId, doc, 
                             {/* Node Context */}
                             {nodeInfo && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                     <div className="p-4 rounded-xl bg-surface border border-white/10">
-                                         <span className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">Failed Node</span>
-                                         <div className="text-sm text-white font-mono flex items-center gap-2">
-                                             <Activity className="w-4 h-4 text-primary" />
-                                             {nodeInfo.name}
-                                         </div>
-                                     </div>
-                                     <div className="p-4 rounded-xl bg-surface border border-white/10">
-                                         <span className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">Node Type</span>
-                                         <div className="text-sm text-white font-mono flex items-center gap-2">
-                                             <Terminal className="w-4 h-4 text-secondary" />
-                                             {nodeInfo.type}
-                                         </div>
-                                     </div>
+                                    <div className="p-4 rounded-xl bg-surface border border-white/10">
+                                        <span className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">Failed Node</span>
+                                        <div className="text-sm text-white font-mono flex items-center gap-2">
+                                            <Activity className="w-4 h-4 text-primary" />
+                                            {nodeInfo.name}
+                                        </div>
+                                    </div>
+                                    <div className="p-4 rounded-xl bg-surface border border-white/10">
+                                        <span className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">Node Type</span>
+                                        <div className="text-sm text-white font-mono flex items-center gap-2">
+                                            <Terminal className="w-4 h-4 text-secondary" />
+                                            {nodeInfo.type}
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
@@ -400,7 +403,7 @@ const ErrorDetailsModal: React.FC<ErrorDetailsModalProps> = ({ notebookId, doc, 
                         </>
                     )}
                 </div>
-                
+
                 {/* Footer */}
                 <div className="p-4 border-t border-white/10 bg-surface/50 flex justify-end">
                     <Button variant="outline" onClick={onClose} className="border-white/10">Close</Button>
@@ -421,13 +424,14 @@ interface IngestionDetailsModalProps {
 }
 
 const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, notebookId, onClose }) => {
+    const { user } = useUser();
     const [fetchedData, setFetchedData] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false);
-    
+
     // Real-time Contextual Data
     const [contextualChunks, setContextualChunks] = useState<ContextualChunk[]>([]);
     const [isLoadingChunks, setIsLoadingChunks] = useState(false);
-    
+
     // Real-time Workflow Stage
     const [workflowStage, setWorkflowStage] = useState<string | null>(null);
 
@@ -445,10 +449,11 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                 const response = await fetch(INGESTION_SETTINGS_WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         notebook_id: notebookId,
                         file_id: targetId,
-                        job_id: doc.jobId || doc.id
+                        job_id: doc.jobId || doc.id,
+                        user_id: user?.id
                     })
                 });
 
@@ -456,7 +461,7 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                     const res = await response.json();
                     let data = Array.isArray(res) ? res[0] : res;
                     if (data.json) data = data.json;
-                    
+
                     if (data.ingestion_settings && typeof data.ingestion_settings === 'string') {
                         try {
                             data.ingestion_settings = JSON.parse(data.ingestion_settings);
@@ -481,29 +486,30 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
         if (!doc) return;
 
         const fetchWorkflowStage = async () => {
-             try {
+            try {
                 const response = await fetch(WORKFLOW_STAGE_WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         file_id: doc.fileId || doc.id,
                         notebook_id: notebookId,
-                        job_id: doc.jobId || doc.id
+                        job_id: doc.jobId || doc.id,
+                        user_id: user?.id
                     })
                 });
-                
+
                 if (response.ok) {
                     const res = await response.json();
                     let data = Array.isArray(res) ? res[0] : res;
                     // Handle n8n wrapping
                     if (data.json) data = data.json;
-                    
+
                     const stage = data.stage || data.workflow_stage || data.current_stage || data.status;
                     if (stage) setWorkflowStage(String(stage));
                 }
-             } catch (e) {
-                 console.error("Failed to fetch workflow stage", e);
-             }
+            } catch (e) {
+                console.error("Failed to fetch workflow stage", e);
+            }
         };
 
         fetchWorkflowStage();
@@ -540,12 +546,12 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
     // Poll for Contextual Chunks if Augmentation is Enabled
     useEffect(() => {
         if (!doc || !isAugmentationEnabled || !displayData.fileId) return;
-        
+
         // Don't show global loader for polling, only initial
         if (contextualChunks.length === 0) setIsLoadingChunks(true);
 
         const fetchChunks = async () => {
-             try {
+            try {
                 // Explicitly use doc properties as fallback to ensure valid IDs are sent
                 // instead of relying solely on displayData which might be 'N/A' initially
                 const targetFileId = displayData.fileId !== 'N/A' ? displayData.fileId : (doc.fileId || doc.id);
@@ -554,13 +560,14 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                 const response = await fetch(CONTEXTUAL_RETRIEVAL_STATE_WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         notebook_id: notebookId,
                         file_id: targetFileId,
-                        job_id: targetJobId
+                        job_id: targetJobId,
+                        user_id: user?.id
                     })
                 });
-                
+
                 if (response.ok) {
                     const res = await response.json();
                     let data = Array.isArray(res) ? res : (res.data || []);
@@ -568,11 +575,11 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                     data = data.map((item: any) => item.json || item);
                     setContextualChunks(data);
                 }
-             } catch (e) {
-                 console.error("Failed to fetch contextual chunks", e);
-             } finally {
-                 setIsLoadingChunks(false);
-             }
+            } catch (e) {
+                console.error("Failed to fetch contextual chunks", e);
+            } finally {
+                setIsLoadingChunks(false);
+            }
         };
 
         fetchChunks();
@@ -593,7 +600,7 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                 <span className="text-xs font-bold text-text-subtle uppercase tracking-wider">{label}</span>
             </div>
             {isLoading && !fetchedData ? (
-                 <div className="h-4 w-12 bg-white/5 rounded animate-pulse"></div>
+                <div className="h-4 w-12 bg-white/5 rounded animate-pulse"></div>
             ) : (
                 <span className="text-xs font-bold text-white font-mono text-right max-w-[200px] truncate" title={String(value)}>
                     {value === true ? 'Enabled' : value === false ? 'Disabled' : (value || 'N/A')}
@@ -604,7 +611,7 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
 
     return createPortal(
         <div className="fixed inset-0 z-[120] bg-[#050508] animate-fade-in flex flex-col">
-            
+
             {/* Top Navigation Bar */}
             <div className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-[#050508]/80 backdrop-blur-md shrink-0">
                 <div className="flex items-center gap-4">
@@ -615,17 +622,17 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                     <div>
                         <h2 className="text-lg font-bold text-white leading-none">{displayData.name}</h2>
                         <div className="flex items-center gap-2 mt-1">
-                             <span className="text-[10px] font-mono text-text-subtle">FILE ID: {displayData.fileId}</span>
+                            <span className="text-[10px] font-mono text-text-subtle">FILE ID: {displayData.fileId}</span>
                         </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                     {displayData.url && (
+                    {displayData.url && (
                         <a href={displayData.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 text-xs text-text-subtle hover:text-white transition-colors">
                             <Link className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Open Source</span>
                         </a>
-                     )}
+                    )}
                 </div>
             </div>
 
@@ -638,7 +645,7 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
 
                     {/* Section 1: Metadata & Configuration */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        
+
                         {/* Column 1: Config */}
                         <div className="lg:col-span-2 space-y-6">
                             <div className="bg-[#0A0A0F] border border-white/5 rounded-3xl p-8">
@@ -661,8 +668,8 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                                 </div>
                             </div>
 
-                             {/* Agentic Instructions */}
-                             {displayData.agenticInstructions && (
+                            {/* Agentic Instructions */}
+                            {displayData.agenticInstructions && (
                                 <div className="bg-[#0A0A0F] border border-white/5 rounded-3xl p-8">
                                     <div className="flex items-center gap-3 mb-6">
                                         <div className="p-2 rounded-lg bg-secondary/10 text-secondary">
@@ -687,25 +694,25 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                                     <h3 className="text-sm font-bold text-white uppercase tracking-wider">System Metadata</h3>
                                 </div>
                                 <div className="space-y-4">
-                                     <div>
-                                         <label className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">Job ID</label>
-                                         <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs font-mono text-white break-all shadow-inner">
-                                             {displayData.jobId}
-                                         </div>
-                                     </div>
-                                     <div>
-                                         <label className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">File ID</label>
-                                         <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs font-mono text-white break-all shadow-inner">
-                                             {displayData.fileId}
-                                         </div>
-                                     </div>
-                                     <div>
-                                         <label className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">Created At</label>
-                                         <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs font-mono text-white flex items-center gap-2 shadow-inner">
-                                             <Calendar className="w-3.5 h-3.5 text-text-subtle" />
-                                             {displayData.createdAt}
-                                         </div>
-                                     </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">Job ID</label>
+                                        <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs font-mono text-white break-all shadow-inner">
+                                            {displayData.jobId}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">File ID</label>
+                                        <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs font-mono text-white break-all shadow-inner">
+                                            {displayData.fileId}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-text-subtle uppercase tracking-wider block mb-1">Created At</label>
+                                        <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs font-mono text-white flex items-center gap-2 shadow-inner">
+                                            <Calendar className="w-3.5 h-3.5 text-text-subtle" />
+                                            {displayData.createdAt}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -725,10 +732,10 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                     {isLoadingChunks && <Loader2 className="w-4 h-4 text-primary animate-spin" />}
-                                     <span className="text-[10px] font-mono text-text-subtle bg-white/5 px-2 py-1 rounded">
-                                         {contextualChunks.length} Records
-                                     </span>
+                                    {isLoadingChunks && <Loader2 className="w-4 h-4 text-primary animate-spin" />}
+                                    <span className="text-[10px] font-mono text-text-subtle bg-white/5 px-2 py-1 rounded">
+                                        {contextualChunks.length} Records
+                                    </span>
                                 </div>
                             </div>
 
@@ -812,20 +819,20 @@ interface IngestionModalProps {
     onIngestionStarted: () => void;
 }
 
-const IngestionModal: React.FC<IngestionModalProps> = ({ 
-    isOpen, 
-    onClose, 
-    notebookId, 
+const IngestionModal: React.FC<IngestionModalProps> = ({
+    isOpen,
+    onClose,
+    notebookId,
     notebookName,
     notebookDescription,
     config,
-    onIngestionStarted 
+    onIngestionStarted
 }) => {
     // Steps: source -> discovery (SharePoint) / local_select (Local) -> settings -> processing
     const [step, setStep] = useState<'source' | 'discovery' | 'local_select' | 'settings'>('source');
     const [sourceType, setSourceType] = useState<'sharepoint' | 'local' | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    
+
     // Data State
     const [discoveredFiles, setDiscoveredFiles] = useState<SharePointFile[]>([]);
     const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
@@ -838,7 +845,7 @@ const IngestionModal: React.FC<IngestionModalProps> = ({
     const [overlap, setOverlap] = useState(200); // Default to 200
     const [augmentation, setAugmentation] = useState('standard');
     const [destination, setDestination] = useState('postgres');
-    
+
     // Performance State
     const [batchSize, setBatchSize] = useState(50);
     const [contextBatchSize, setContextBatchSize] = useState(10);
@@ -880,9 +887,9 @@ const IngestionModal: React.FC<IngestionModalProps> = ({
                 const data = await response.json();
                 let files: SharePointFile[] = [];
                 const raw = Array.isArray(data) ? data : (data.files || data.data || []);
-                
+
                 files = raw.map((item: any) => {
-                    const f = item.json || item; 
+                    const f = item.json || item;
                     return {
                         id: f.id || f.uuid || Math.random().toString(36),
                         name: f.name || f.title || 'Untitled',
@@ -939,7 +946,7 @@ const IngestionModal: React.FC<IngestionModalProps> = ({
 
     const handleIngest = async () => {
         setIsLoading(true);
-        
+
         try {
             const ingestionMethodMap: Record<string, string> = {
                 'sharepoint': 'SharePoint',
@@ -1002,16 +1009,16 @@ Output: 2022
                 inference_temperature: config.inference.temperature,
 
                 ingestion_method: ingestionMethodMap[sourceType || 'local'] || sourceType,
-                
+
                 config_parser_mode: parserModeMap[parsingMethod] || parsingMethod,
                 config_chunking_mode: chunkingModeMap[chunkingMethod] || chunkingMethod,
                 config_destination: destinationMap[destination] || destination,
                 config_enable_context_augmentation: augmentation === 'enrichment',
-                
+
                 recursive_chunk_size: chunkSize,
                 recursive_chunk_overlap: overlap,
                 recursive_separators: ["\n\n", "\n", ". ", " ", ""],
-                
+
                 agentic_model: config.inference.model,
                 agentic_instructions: agenticInstructions,
                 agentic_min_size: 300,
@@ -1019,7 +1026,7 @@ Output: 2022
 
                 batch_processing_size: batchSize,
                 contextual_batch_processing_size: contextBatchSize,
-                
+
                 timestamp: new Date().toISOString(),
                 action: sourceType === 'sharepoint' ? "process_sharepoint_folder" : "ingest",
                 orchestrator_id: ORCHESTRATOR_ID,
@@ -1029,7 +1036,7 @@ Output: 2022
             if (sourceType === 'sharepoint') {
                 const selectedFiles = discoveredFiles.filter(f => selectedFileIds.has(f.id));
                 payload.files = selectedFiles;
-                
+
                 // Add first selected item as root params to match specific user request pattern
                 if (selectedFiles.length > 0) {
                     payload.sharepoint_folder_id = selectedFiles[0].id;
@@ -1077,7 +1084,7 @@ Output: 2022
 
     return createPortal(
         <div className="fixed inset-0 z-[100] bg-[#050508] animate-fade-in flex flex-col">
-            
+
             {/* Header */}
             <div className="h-20 border-b border-white/5 flex justify-between items-center px-8 bg-surface/50 backdrop-blur-xl shrink-0">
                 <div>
@@ -1106,16 +1113,16 @@ Output: 2022
             <div className="flex-1 overflow-y-auto custom-scrollbar relative">
                 {/* Background decoration */}
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                     <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-primary/5 blur-[120px] rounded-full mix-blend-screen"></div>
-                     <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-secondary/5 blur-[100px] rounded-full mix-blend-screen"></div>
+                    <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-primary/5 blur-[120px] rounded-full mix-blend-screen"></div>
+                    <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-secondary/5 blur-[100px] rounded-full mix-blend-screen"></div>
                 </div>
 
                 <div className={`max-w-7xl mx-auto p-8 md:p-12 min-h-full flex flex-col relative z-10 ${step === 'settings' ? '' : 'justify-center'}`}>
-                    
+
                     {/* STEP 1: SOURCE SELECTION */}
                     {step === 'source' && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-4xl mx-auto w-full">
-                            <button 
+                            <button
                                 onClick={handleDiscoverSharePoint}
                                 className="group p-10 rounded-3xl border border-white/10 bg-surface/50 backdrop-blur-sm hover:bg-surface-highlight hover:border-primary/50 transition-all flex flex-col items-center text-center gap-6 relative overflow-hidden shadow-2xl hover:shadow-[0_0_40px_-10px_rgba(126,249,255,0.2)]"
                             >
@@ -1129,7 +1136,7 @@ Output: 2022
                                 </div>
                             </button>
 
-                            <button 
+                            <button
                                 onClick={handleLocalSelect}
                                 className="group p-10 rounded-3xl border border-white/10 bg-surface/50 backdrop-blur-sm hover:bg-surface-highlight hover:border-secondary/50 transition-all flex flex-col items-center text-center gap-6 relative overflow-hidden shadow-2xl hover:shadow-[0_0_40px_-10px_rgba(224,59,138,0.2)]"
                             >
@@ -1185,8 +1192,8 @@ Output: 2022
                                         {discoveredFiles.map(file => {
                                             const isSelected = selectedFileIds.has(file.id);
                                             return (
-                                                <div 
-                                                    key={file.id} 
+                                                <div
+                                                    key={file.id}
                                                     onClick={() => toggleSelection(file.id)}
                                                     className={`flex items-center gap-4 p-4 border-b border-white/5 last:border-0 cursor-pointer transition-colors ${isSelected ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-white/5'}`}
                                                 >
@@ -1213,9 +1220,9 @@ Output: 2022
                     {step === 'local_select' && (
                         <div className="space-y-8 max-w-4xl mx-auto w-full">
                             <div className="border-2 border-dashed border-white/10 rounded-3xl bg-surface/20 p-12 flex flex-col items-center justify-center text-center hover:border-primary/30 hover:bg-surface/30 transition-all group cursor-pointer relative h-64">
-                                <input 
-                                    type="file" 
-                                    multiple 
+                                <input
+                                    type="file"
+                                    multiple
                                     className="absolute inset-0 opacity-0 cursor-pointer"
                                     onChange={handleLocalFileChange}
                                 />
@@ -1228,14 +1235,14 @@ Output: 2022
 
                             {localFiles.length > 0 && (
                                 <div className="space-y-4 animate-fade-in-up">
-                                     <div className="flex justify-between items-center px-2">
+                                    <div className="flex justify-between items-center px-2">
                                         <span className="text-sm font-bold text-text-subtle uppercase tracking-wider">Ready to Upload</span>
                                         <span className="text-xs font-bold bg-secondary/10 text-secondary px-2 py-1 rounded border border-secondary/20">{localFiles.length} Files</span>
                                     </div>
                                     <div className="border border-white/10 rounded-2xl overflow-hidden bg-surface/30">
                                         {localFiles.map((file, idx) => (
                                             <div key={idx} className="flex items-center justify-between p-4 border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                                                 <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-4">
                                                     <div className="w-10 h-10 rounded-lg bg-surface border border-white/5 flex items-center justify-center text-text-subtle">
                                                         <FileText className="w-5 h-5" />
                                                     </div>
@@ -1243,10 +1250,10 @@ Output: 2022
                                                         <div className="text-sm font-medium text-white">{file.name}</div>
                                                         <div className="text-xs text-text-subtle/50">{(file.size / 1024).toFixed(1)} KB</div>
                                                     </div>
-                                                 </div>
-                                                 <button onClick={() => removeLocalFile(idx)} className="p-2 rounded-lg hover:bg-white/10 text-text-subtle hover:text-red-400 transition-colors">
-                                                     <X className="w-5 h-5" />
-                                                 </button>
+                                                </div>
+                                                <button onClick={() => removeLocalFile(idx)} className="p-2 rounded-lg hover:bg-white/10 text-text-subtle hover:text-red-400 transition-colors">
+                                                    <X className="w-5 h-5" />
+                                                </button>
                                             </div>
                                         ))}
                                     </div>
@@ -1270,22 +1277,22 @@ Output: 2022
                                             {sourceType === 'sharepoint' ? 'SharePoint Ingestion' : 'Local File Upload'}
                                         </h4>
                                         <p className="text-sm text-text-subtle mt-1">
-                                            {sourceType === 'sharepoint' 
-                                                ? `${selectedFileIds.size} files ready for processing` 
+                                            {sourceType === 'sharepoint'
+                                                ? `${selectedFileIds.size} files ready for processing`
                                                 : `${localFiles.length} files ready for upload`
                                             }
                                         </p>
                                     </div>
                                 </div>
-                                <Button 
-                                    variant="outline" 
+                                <Button
+                                    variant="outline"
                                     onClick={() => setStep(sourceType === 'sharepoint' ? 'discovery' : 'local_select')}
                                     className="!h-10 !px-5 text-xs border-white/10 hover:bg-white/5 backdrop-blur-md"
                                 >
                                     Change Files
                                 </Button>
                             </div>
-                            
+
                             {/* Parsing Strategy */}
                             <section className="space-y-6">
                                 <div className="flex items-center gap-3">
@@ -1298,35 +1305,35 @@ Output: 2022
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={FileText}
                                         title="Basic Extractor"
                                         description="Simple text/HTML extraction using standard n8n nodes. Best for simple files."
                                         selected={parsingMethod === 'text'}
                                         onClick={() => setParsingMethod('text')}
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={Settings2}
                                         title="LlamaParse"
                                         description="Advanced parsing for complex PDFs with tables and figures."
                                         selected={parsingMethod === 'layout'}
                                         onClick={() => setParsingMethod('layout')}
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={ScanText}
                                         title="Mistral OCR"
                                         description="High-fidelity optical character recognition for scanned documents."
                                         selected={parsingMethod === 'ocr'}
                                         onClick={() => setParsingMethod('ocr')}
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={Sparkles}
                                         title="Gemini OCR"
                                         description="Multimodal parsing using Google Gemini Vision capabilities."
                                         selected={parsingMethod === 'gemini_ocr'}
                                         onClick={() => setParsingMethod('gemini_ocr')}
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={FileType}
                                         title="Docling Parser"
                                         description="Specialized layout analysis and structure extraction."
@@ -1350,21 +1357,21 @@ Output: 2022
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={Code}
                                         title="Recursive Text Splitter"
                                         description="Standard splitting using separators and overlap."
                                         selected={chunkingMethod === 'recursive'}
                                         onClick={() => setChunkingMethod('recursive')}
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={Brain}
                                         title="Agentic Chunking"
                                         description="Semantic splitting based on content meaning and context boundaries."
                                         selected={chunkingMethod === 'agentic'}
                                         onClick={() => setChunkingMethod('agentic')}
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={FileType}
                                         title="Docling Chunker"
                                         description="Hierarchical chunking preserving document structure."
@@ -1388,7 +1395,7 @@ Output: 2022
                                                     <label className="text-sm font-bold text-white">Chunk Size</label>
                                                     <span className="text-xs font-mono text-primary bg-primary/10 px-3 py-1 rounded border border-primary/20">{chunkSize}</span>
                                                 </div>
-                                                <input 
+                                                <input
                                                     type="range" min="100" max="4000" step="100"
                                                     value={chunkSize} onChange={(e) => setChunkSize(Number(e.target.value))}
                                                     className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
@@ -1400,7 +1407,7 @@ Output: 2022
                                                     <label className="text-sm font-bold text-white">Chunk Overlap</label>
                                                     <span className="text-xs font-mono text-secondary bg-secondary/10 px-3 py-1 rounded border border-secondary/20">{overlap}</span>
                                                 </div>
-                                                <input 
+                                                <input
                                                     type="range" min="0" max="1000" step="50"
                                                     value={overlap} onChange={(e) => setOverlap(Number(e.target.value))}
                                                     className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-secondary [&::-webkit-slider-thumb]:shadow-lg hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
@@ -1424,14 +1431,14 @@ Output: 2022
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={Zap}
                                         title="Standard Indexing"
                                         description="Fast, direct indexing of chunks. Ideal for well-structured documents."
                                         selected={augmentation === 'standard'}
                                         onClick={() => setAugmentation('standard')}
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={Brain}
                                         title="AI Context Enrichment"
                                         description="Uses LLMs to generate hypothetical questions and summaries for every chunk, fixing 'lost context' in split documents."
@@ -1458,7 +1465,7 @@ Output: 2022
                                             <label className="text-sm font-bold text-white">Ingestion Batch Size</label>
                                             <span className="text-xs font-mono text-purple-400 bg-purple-500/10 px-3 py-1 rounded border border-purple-500/20">{batchSize}</span>
                                         </div>
-                                        <input 
+                                        <input
                                             type="range" min="1" max="100" step="1"
                                             value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))}
                                             className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-400 [&::-webkit-slider-thumb]:shadow-lg hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
@@ -1470,7 +1477,7 @@ Output: 2022
                                             <label className="text-sm font-bold text-white">Context Batch Size</label>
                                             <span className="text-xs font-mono text-purple-400 bg-purple-500/10 px-3 py-1 rounded border border-purple-500/20">{contextBatchSize}</span>
                                         </div>
-                                        <input 
+                                        <input
                                             type="range" min="1" max="50" step="1"
                                             value={contextBatchSize} onChange={(e) => setContextBatchSize(Number(e.target.value))}
                                             disabled={augmentation !== 'enrichment'}
@@ -1493,14 +1500,14 @@ Output: 2022
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={Database}
                                         title="PostgreSQL (pgvector)"
                                         description="Relational database with vector extension. Best for hybrid search."
                                         selected={destination === 'postgres'}
                                         onClick={() => setDestination('postgres')}
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={HardDrive}
                                         title="Qdrant Vector DB"
                                         description="High-performance vector similarity search engine."
@@ -1509,7 +1516,7 @@ Output: 2022
                                         disabled={true}
                                         badge="Temporarily unavailable."
                                     />
-                                    <SelectionCard 
+                                    <SelectionCard
                                         icon={Cloud}
                                         title="Pinecone"
                                         description="Managed vector database service."
@@ -1530,32 +1537,32 @@ Output: 2022
             {/* Footer */}
             <div className="h-24 border-t border-white/5 bg-[#0A0A0F]/80 backdrop-blur-xl flex justify-between items-center px-8 shrink-0 z-20">
                 <div className="flex items-center gap-2">
-                     {step === 'settings' && (
-                         <div className="hidden md:flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded border border-emerald-500/20">
-                             <CheckCircle2 className="w-4 h-4" />
-                             <span>Configuration Validated</span>
-                         </div>
-                     )}
+                    {step === 'settings' && (
+                        <div className="hidden md:flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded border border-emerald-500/20">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Configuration Validated</span>
+                        </div>
+                    )}
                 </div>
-                
+
                 <div className="flex gap-4">
-                    <Button 
-                        variant="outline" 
+                    <Button
+                        variant="outline"
                         onClick={() => {
                             if (step === 'settings') setStep(sourceType === 'sharepoint' ? 'discovery' : 'local_select');
                             else if (step === 'discovery' || step === 'local_select') setStep('source');
                             else onClose();
-                        }} 
+                        }}
                         disabled={isLoading}
                         className="!h-12 !px-6 border-white/10 hover:bg-white/5 text-text-subtle hover:text-white"
                     >
                         {step === 'source' ? 'Cancel' : 'Back'}
                     </Button>
-                    
+
                     {step === 'settings' ? (
-                        <Button 
-                            variant="primary" 
-                            onClick={handleIngest} 
+                        <Button
+                            variant="primary"
+                            onClick={handleIngest}
                             disabled={isLoading}
                             className="!h-12 !px-8 shadow-neon-primary disabled:opacity-50 text-sm"
                         >
@@ -1564,8 +1571,8 @@ Output: 2022
                         </Button>
                     ) : (
                         (step === 'discovery' && discoveredFiles.length > 0) || (step === 'local_select' && localFiles.length > 0) ? (
-                            <Button 
-                                variant="primary" 
+                            <Button
+                                variant="primary"
                                 onClick={proceedToSettings}
                                 className="!h-12 !px-8 shadow-neon-primary text-sm"
                             >
@@ -1585,10 +1592,10 @@ Output: 2022
 // ... (rest of the file remains the same)
 
 interface NotebookDocumentsProps {
-  notebookId: string;
-  notebookName: string;
-  notebookDescription?: string;
-  config: NotebookConfig;
+    notebookId: string;
+    notebookName: string;
+    notebookDescription?: string;
+    config: NotebookConfig;
 }
 
 const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, notebookName, notebookDescription, config }) => {
@@ -1610,10 +1617,10 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ notebook_id: notebookId })
             });
-            
+
             if (response.ok) {
                 const data = await response.json();
-                
+
                 // Handle different response structures (direct array, or n8n wrapped)
                 let rawData = [];
                 if (Array.isArray(data)) {
@@ -1623,10 +1630,10 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                 } else if (data.data && Array.isArray(data.data)) {
                     rawData = data.data;
                 } else {
-                     // Fallback for n8n wrapping if root is object but not array
-                     rawData = [data]; 
+                    // Fallback for n8n wrapping if root is object but not array
+                    rawData = [data];
                 }
-                
+
                 // Unwrap n8n json if present
                 rawData = rawData.map((item: any) => item.json ? item.json : item);
 
@@ -1637,7 +1644,7 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                         // Map status to frontend types
                         let status: Document['status'] = 'completed';
                         const s = (doc.status || '').toLowerCase();
-                        
+
                         if (s === 'pending' || s === 'queued' || s === 'new') status = 'pending';
                         else if (s === 'processing' || s === 'running' || s === 'ingesting') status = 'processing';
                         else if (s === 'failed' || s === 'error') status = 'error';
@@ -1666,7 +1673,7 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                             }
                         };
                     });
-                    
+
                 // Sort by updated time or creation time desc
                 mappedDocs.sort((a, b) => {
                     const timeA = new Date(a.updated || a.added).getTime();
@@ -1706,18 +1713,18 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
     const handleIngestionStarted = () => {
         setIsLoading(true);
         // Refresh immediately to show pending job, then continue polling via useEffect
-        setTimeout(() => fetchDocuments(), 1000); 
+        setTimeout(() => fetchDocuments(), 1000);
     };
 
     const handleDeleteFile = async (doc: Document, e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        
+
         // Log to verify click is capturing
         console.log("🗑️ Delete Requested for:", doc.name, doc.id);
 
         setDeletingFileId(doc.id);
-        
+
         try {
             const payload = {
                 notebook_id: notebookId,
@@ -1751,128 +1758,128 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
         }
     };
 
-    const filteredDocs = documents.filter(doc => 
+    const filteredDocs = documents.filter(doc =>
         doc.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     return (
         <div className="flex flex-col h-full bg-[#050508] relative overflow-hidden animate-fade-in">
-             <IngestionModal 
-                isOpen={isIngestModalOpen} 
-                onClose={() => setIsIngestModalOpen(false)} 
+            <IngestionModal
+                isOpen={isIngestModalOpen}
+                onClose={() => setIsIngestModalOpen(false)}
                 notebookId={notebookId}
                 notebookName={notebookName}
                 notebookDescription={notebookDescription}
                 config={config}
                 onIngestionStarted={handleIngestionStarted}
-             />
+            />
 
-            <IngestionDetailsModal 
+            <IngestionDetailsModal
                 doc={selectedDetailDoc}
                 notebookId={notebookId}
                 onClose={() => setSelectedDetailDoc(null)}
             />
-            
+
             <ErrorDetailsModal
                 doc={selectedErrorDoc}
                 notebookId={notebookId}
                 onClose={() => setSelectedErrorDoc(null)}
             />
 
-             {/* Header */}
-             <div className="p-8 pb-4 border-b border-white/5 bg-surface/50 backdrop-blur-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-20">
-                 <div>
-                     <div className="flex items-center gap-3 mb-1">
-                         <div className="p-2 rounded-lg bg-secondary/10 text-secondary border border-secondary/20">
-                             <Database className="w-5 h-5" />
-                         </div>
-                         <h1 className="text-2xl font-bold text-white tracking-tight">Documents</h1>
-                     </div>
-                     <p className="text-text-subtle text-sm max-w-2xl">{notebookDescription || 'Manage the knowledge source for this notebook.'}</p>
-                 </div>
-                 
-                 <div className="flex gap-3">
-                     <Button variant="outline" onClick={() => fetchDocuments(false)} className="!h-10 border-white/10 hover:bg-white/5 text-text-subtle">
-                         <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                     </Button>
-                     <Button 
-                        variant="primary" 
+            {/* Header */}
+            <div className="p-8 pb-4 pr-32 border-b border-white/5 bg-surface/50 backdrop-blur-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-50 relative">
+                <div>
+                    <div className="flex items-center gap-3 mb-1">
+                        <div className="p-2 rounded-lg bg-secondary/10 text-secondary border border-secondary/20">
+                            <Database className="w-5 h-5" />
+                        </div>
+                        <h1 className="text-2xl font-bold text-white tracking-tight">Documents</h1>
+                    </div>
+                    <p className="text-text-subtle text-sm max-w-2xl">{notebookDescription || 'Manage the knowledge source for this notebook.'}</p>
+                </div>
+
+                <div className="flex gap-3">
+                    <Button variant="outline" onClick={() => fetchDocuments(false)} className="!h-10 border-white/10 hover:bg-white/5 text-text-subtle">
+                        <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    </Button>
+                    <Button
+                        variant="primary"
                         onClick={() => setIsIngestModalOpen(true)}
                         className="!h-10 !px-4 shadow-neon-primary text-xs flex items-center gap-2"
-                     >
-                         <Plus className="w-4 h-4" /> Add New File
-                     </Button>
-                 </div>
-             </div>
-             
-             {/* Toolbar */}
-             <div className="px-8 py-4 border-b border-white/5 bg-surface/30 flex justify-between items-center z-10">
-                 <div className="relative group w-64">
-                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-subtle group-focus-within:text-white transition-colors" />
-                     <input 
-                        type="text" 
-                        placeholder="Search files..." 
+                    >
+                        <Plus className="w-4 h-4" /> Add New File
+                    </Button>
+                </div>
+            </div>
+
+            {/* Toolbar */}
+            <div className="px-8 py-4 border-b border-white/5 bg-surface/30 flex justify-between items-center z-10">
+                <div className="relative group w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-subtle group-focus-within:text-white transition-colors" />
+                    <input
+                        type="text"
+                        placeholder="Search files..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full bg-[#0A0A0F] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary/50 transition-colors"
-                     />
-                 </div>
-                 
-                 <div className="flex bg-[#0A0A0F] rounded-lg p-1 border border-white/10">
-                     <button 
+                    />
+                </div>
+
+                <div className="flex bg-[#0A0A0F] rounded-lg p-1 border border-white/10">
+                    <button
                         onClick={() => setViewMode('list')}
                         className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white/10 text-white shadow-sm' : 'text-text-subtle hover:text-white'}`}
-                     >
-                         <ListIcon className="w-4 h-4" />
-                     </button>
-                     <button 
+                    >
+                        <ListIcon className="w-4 h-4" />
+                    </button>
+                    <button
                         onClick={() => setViewMode('grid')}
                         className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white/10 text-white shadow-sm' : 'text-text-subtle hover:text-white'}`}
-                     >
-                         <LayoutGrid className="w-4 h-4" />
-                     </button>
-                 </div>
-             </div>
+                    >
+                        <LayoutGrid className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
 
-             {/* Content */}
-             <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
-                 {isLoading && documents.length === 0 ? (
-                     <div className="flex flex-col items-center justify-center h-64 text-text-subtle">
-                         <Loader2 className="w-8 h-8 animate-spin mb-4 text-primary" />
-                         <p>Loading documents...</p>
-                     </div>
-                 ) : filteredDocs.length === 0 ? (
-                     <div className="flex flex-col items-center justify-center h-64 text-text-subtle border border-dashed border-white/10 rounded-2xl bg-surface/20">
-                         <FolderOpen className="w-12 h-12 mb-4 opacity-50" />
-                         <p>No documents found.</p>
-                         {searchQuery && <p className="text-xs mt-2">Try adjusting your search query.</p>}
-                     </div>
-                 ) : viewMode === 'list' ? (
-                     <div className="space-y-3">
-                         {filteredDocs.map((doc) => (
-                             <div 
-                                key={doc.id} 
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+                {isLoading && documents.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-text-subtle">
+                        <Loader2 className="w-8 h-8 animate-spin mb-4 text-primary" />
+                        <p>Loading documents...</p>
+                    </div>
+                ) : filteredDocs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-text-subtle border border-dashed border-white/10 rounded-2xl bg-surface/20">
+                        <FolderOpen className="w-12 h-12 mb-4 opacity-50" />
+                        <p>No documents found.</p>
+                        {searchQuery && <p className="text-xs mt-2">Try adjusting your search query.</p>}
+                    </div>
+                ) : viewMode === 'list' ? (
+                    <div className="space-y-3">
+                        {filteredDocs.map((doc) => (
+                            <div
+                                key={doc.id}
                                 onClick={() => doc.status === 'error' ? setSelectedErrorDoc(doc) : setSelectedDetailDoc(doc)}
                                 className="group relative flex items-center justify-between p-4 rounded-xl bg-[#0E0E12] border border-white/5 hover:border-white/10 hover:bg-[#121216] transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
-                             >
-                                 <div className="flex items-center gap-4">
-                                     <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20">
-                                         <FileText className="w-5 h-5" />
-                                     </div>
-                                     <div>
-                                         <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors">{doc.name}</h3>
-                                         <div className="flex items-center gap-2 text-xs text-text-subtle mt-1">
-                                             <span className="font-mono opacity-50 bg-black/30 px-1.5 rounded text-[10px]">{doc.jobId ? `Job: ${doc.jobId.slice(0,8)}` : 'ID: N/A'}</span>
-                                             <span className="w-1 h-1 rounded-full bg-white/20"></span>
-                                             <span>{new Date(doc.updated || doc.added).toLocaleString()}</span>
-                                         </div>
-                                     </div>
-                                 </div>
-                                 <div className="flex items-center gap-4">
-                                     <StatusBadge status={doc.status} error={doc.error} />
-                                     <div className="h-6 w-px bg-white/5"></div>
-                                     <div className="flex items-center gap-1">
-                                        <button 
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20">
+                                        <FileText className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors">{doc.name}</h3>
+                                        <div className="flex items-center gap-2 text-xs text-text-subtle mt-1">
+                                            <span className="font-mono opacity-50 bg-black/30 px-1.5 rounded text-[10px]">{doc.jobId ? `Job: ${doc.jobId.slice(0, 8)}` : 'ID: N/A'}</span>
+                                            <span className="w-1 h-1 rounded-full bg-white/20"></span>
+                                            <span>{new Date(doc.updated || doc.added).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <StatusBadge status={doc.status} error={doc.error} />
+                                    <div className="h-6 w-px bg-white/5"></div>
+                                    <div className="flex items-center gap-1">
+                                        <button
                                             type="button"
                                             onClick={(e) => handleDeleteFile(doc, e)}
                                             disabled={deletingFileId === doc.id}
@@ -1881,8 +1888,8 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                                         >
                                             {deletingFileId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                         </button>
-                                        <button 
-                                            type="button" 
+                                        <button
+                                            type="button"
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 doc.status === 'error' ? setSelectedErrorDoc(doc) : setSelectedDetailDoc(doc);
@@ -1892,57 +1899,57 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                                         >
                                             {doc.status === 'error' ? <AlertTriangle className="w-4 h-4" /> : <Info className="w-4 h-4" />}
                                         </button>
-                                     </div>
-                                 </div>
-                             </div>
-                         ))}
-                     </div>
-                 ) : (
-                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                         {filteredDocs.map((doc) => (
-                             <div 
-                                key={doc.id} 
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {filteredDocs.map((doc) => (
+                            <div
+                                key={doc.id}
                                 onClick={() => doc.status === 'error' ? setSelectedErrorDoc(doc) : setSelectedDetailDoc(doc)}
                                 className="group p-5 rounded-xl bg-[#0E0E12] border border-white/5 hover:border-white/10 hover:bg-[#121216] transition-all flex flex-col justify-between aspect-square relative shadow-sm hover:shadow-md cursor-pointer"
-                             >
-                                 <div className="flex justify-between items-start">
-                                     <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20">
-                                         <FileText className="w-5 h-5" />
-                                     </div>
-                                     <StatusBadge status={doc.status} error={doc.error} />
-                                 </div>
-                                 <div>
-                                     <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors line-clamp-2 mb-1">{doc.name}</h3>
-                                     <p className="text-xs text-text-subtle font-mono opacity-60">{new Date(doc.added).toLocaleDateString()}</p>
-                                 </div>
-                                 
-                                 {/* Hover Actions */}
-                                 <div className="absolute top-4 right-14 opacity-0 group-hover:opacity-100 transition-opacity z-50 flex gap-1">
-                                      <button 
-                                        type="button" 
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20">
+                                        <FileText className="w-5 h-5" />
+                                    </div>
+                                    <StatusBadge status={doc.status} error={doc.error} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors line-clamp-2 mb-1">{doc.name}</h3>
+                                    <p className="text-xs text-text-subtle font-mono opacity-60">{new Date(doc.added).toLocaleDateString()}</p>
+                                </div>
+
+                                {/* Hover Actions */}
+                                <div className="absolute top-4 right-14 opacity-0 group-hover:opacity-100 transition-opacity z-50 flex gap-1">
+                                    <button
+                                        type="button"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             doc.status === 'error' ? setSelectedErrorDoc(doc) : setSelectedDetailDoc(doc);
                                         }}
                                         className={`p-1.5 rounded bg-surface border border-white/10 transition-colors cursor-pointer ${doc.status === 'error' ? 'text-red-400 hover:bg-red-500/10' : 'text-text-subtle hover:bg-white/10 hover:text-white'}`}
                                         title={doc.status === 'error' ? undefined : "View Details"}
-                                      >
-                                          {doc.status === 'error' ? <AlertTriangle className="w-3.5 h-3.5" /> : <Info className="w-3.5 h-3.5" />}
-                                      </button>
-                                      <button 
+                                    >
+                                        {doc.status === 'error' ? <AlertTriangle className="w-3.5 h-3.5" /> : <Info className="w-3.5 h-3.5" />}
+                                    </button>
+                                    <button
                                         type="button"
                                         onClick={(e) => handleDeleteFile(doc, e)}
                                         disabled={deletingFileId === doc.id}
                                         className="p-1.5 rounded bg-surface border border-white/10 hover:bg-red-500/10 hover:text-red-400 text-text-subtle transition-colors cursor-pointer disabled:opacity-50"
-                                      >
-                                          {deletingFileId === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                      </button>
-                                 </div>
-                             </div>
-                         ))}
-                     </div>
-                 )}
-             </div>
+                                    >
+                                        {deletingFileId === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

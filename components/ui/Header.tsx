@@ -8,7 +8,7 @@ const Header: React.FC = () => {
     // Imported from utils/clerkTheme.ts
 
     return (
-        <header className="fixed top-0 right-0 z-50 p-6">
+        <header className="fixed top-0 right-0 z-40 p-6">
             <div className="flex items-center gap-4">
                 <SignedOut>
                     <a href="/sign-in">

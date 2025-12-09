@@ -5,16 +5,25 @@
   "type": "module",
   "scripts": {
     "dev": "node node_modules/vite/bin/vite.js",
+    "server": "node server/index.js",
+    "dev:all": "start npm run server && npm run dev",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.58.0",
+    "@types/ssh2": "^1.15.5",
+    "@types/ws": "^8.18.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
     "lucide-react": "^0.554.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.10.1",
-    "recharts": "^3.4.1"
+    "recharts": "^3.4.1",
+    "ssh2": "^1.17.0",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
