@@ -6,8 +6,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: advancedwebui
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     environment:
       - NODE_ENV=production
       # Clerk Authentication
@@ -31,6 +31,26 @@ services:
     networks:
       - app-network
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: advancedwebui-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

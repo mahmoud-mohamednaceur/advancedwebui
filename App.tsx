@@ -8,6 +8,7 @@ import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Workflow from './components/Workflow';
 import RagExplanation from './components/RagExplanation';
+import PipelineAnimation from './components/PipelineAnimation';
 import Footer from './components/Footer';
 import Header from './components/ui/Header';
 import Sidebar from './components/Sidebar';
@@ -632,6 +633,7 @@ const App: React.FC = () => {
             <Navbar onStart={handleStart} />
             <main className="flex flex-col w-full flex-grow">
                 <Hero onStart={handleStart} />
+                <PipelineAnimation />
                 <RagExplanation onStart={handleStart} />
             </main>
             <Footer />

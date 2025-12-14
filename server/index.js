@@ -24,6 +24,17 @@ const wss = new WebSocketServer({ server, path: '/ws/logs' });
 app.use(cors());
 app.use(express.json());
 
+// Production: Serve static files from dist folder
+if (process.env.NODE_ENV === 'production') {
+    console.log('📦 Production mode: Serving static files from dist/');
+    app.use(express.static(join(__dirname, '../dist')));
+}
+
+// Health check endpoint for Docker
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY;
 
 if (!CLERK_SECRET_KEY) {
@@ -1163,6 +1174,15 @@ wss.on('connection', (ws) => {
         console.error('❌ WebSocket error:', error);
     });
 });
+
+// Production: SPA fallback - serve index.html for all non-API routes
+if (process.env.NODE_ENV === 'production') {
+    app.get('*', (req, res) => {
+        if (!req.path.startsWith('/api') && !req.path.startsWith('/ws')) {
+            res.sendFile(join(__dirname, '../dist/index.html'));
+        }
+    });
+}
 
 server.listen(port, () => {
     console.log('');
