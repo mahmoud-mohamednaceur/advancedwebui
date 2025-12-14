@@ -831,6 +831,57 @@ app.post('/api/update-permissions', async (req, res) => {
     }
 });
 
+// ============================================
+// BEYOND PRESENCE API PROXY
+// ============================================
+
+// POST /api/beyond-presence/calls - Create Beyond Presence call (proxy to avoid CORS)
+app.post('/api/beyond-presence/calls', async (req, res) => {
+    const { apiKey, agent_id, livekit_username } = req.body;
+    console.log('📥 Received request to create Beyond Presence call');
+
+    if (!apiKey) {
+        console.error('❌ Missing API key in request body');
+        return res.status(400).json({ error: 'apiKey is required' });
+    }
+
+    try {
+        console.log('🔄 Creating Beyond Presence call session...');
+
+        const response = await fetch('https://api.bey.chat/v1/calls', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey
+            },
+            body: JSON.stringify({
+                agent_id: agent_id || undefined,
+                livekit_username: livekit_username || 'User'
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ Beyond Presence API error (${response.status}):`, errorText);
+            return res.status(response.status).json({
+                error: `Beyond Presence API error: ${response.status}`,
+                details: errorText
+            });
+        }
+
+        const data = await response.json();
+        console.log(`✅ Successfully created Beyond Presence call: ${data.id}`);
+        res.json(data);
+    } catch (error) {
+        console.error('❌ Error creating Beyond Presence call:', error.message);
+        res.status(500).json({ error: 'Failed to create Beyond Presence call', details: error.message });
+    }
+});
+
+// ============================================
+// SSH MONITORING ENDPOINTS
+// ============================================
+
 // POST /api/server/connect - Test SSH connection
 app.post('/api/server/connect', async (req, res) => {
     console.log('📥 Testing SSH connection to Hetzner server...');

@@ -8,8 +8,8 @@ const Header: React.FC = () => {
     // Imported from utils/clerkTheme.ts
 
     return (
-        <header className="fixed top-0 right-0 z-40 p-6">
-            <div className="flex items-center gap-4">
+        <header className="absolute top-0 right-0 z-50 p-6 pointer-events-none">
+            <div className="flex items-center gap-4 pointer-events-auto">
                 <SignedOut>
                     <a href="/sign-in">
                         <button className="group relative px-8 py-3 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-background font-semibold rounded-xl transition-all duration-300 shadow-neon-primary hover:shadow-neon-primary hover:scale-105 overflow-hidden">

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { SignedIn, SignedOut, useAuth, useUser } from '@clerk/clerk-react';
+import { logger } from './utils/logger';
 import SignInPage from './components/auth/SignInPage';
 import SignUpPage from './components/auth/SignUpPage';
 import Navbar from './components/Navbar';
@@ -16,7 +17,6 @@ import DashboardPage from './components/DashboardPage';
 import NotebookDashboard from './components/workspace/NotebookDashboard';
 import NotebookDocuments from './components/workspace/NotebookDocuments';
 import PlaygroundSearch from './components/workspace/PlaygroundSearch';
-import PlaygroundChart from './components/workspace/PlaygroundChart';
 import NotebookChat from './components/workspace/NotebookChat';
 import NotebookSettings from './components/workspace/NotebookSettings';
 import NotebookEmbeddingSetup from './components/workspace/NotebookEmbeddingSetup';
@@ -69,6 +69,7 @@ const App: React.FC = () => {
         };
     }, []);
 
+
     // Redirect to sign-in if accessing app while signed out and not on auth pages
     useEffect(() => {
         if (isLoaded && !isSignedIn && currentView === 'app') {
@@ -109,7 +110,7 @@ const App: React.FC = () => {
             const saved = localStorage.getItem('rag_flow_notebook_configs');
             return saved ? JSON.parse(saved) : {};
         } catch (e) {
-            console.error("Failed to load configs from local storage", e);
+            logger.error("Failed to load configs from local storage", e);
             return {};
         }
     });
@@ -131,10 +132,11 @@ const App: React.FC = () => {
             inference_temperature: config.inference.temperature,
             active_strategy_id: config.activeStrategyId,
             strategies_config: config.strategies,
+            avatar_chat_config: config.avatarChat || null,
             user_id: user?.id
         };
 
-        console.log("🚀 Syncing Initial/Default Settings to Webhook:", payload);
+        logger.debug("Syncing Initial/Default Settings to Webhook", { payload });
 
         try {
             await fetch('https://n8nserver.sportnavi.de/webhook/e64ae3ac-0d81-4303-be26-d18fd2d1faf6-notebook-settings', {
@@ -143,7 +145,7 @@ const App: React.FC = () => {
                 body: JSON.stringify(payload)
             });
         } catch (error) {
-            console.warn("Failed to sync initial settings to webhook:", error);
+            logger.warn("Failed to sync initial settings to webhook", error);
         }
     };
 
@@ -193,14 +195,15 @@ const App: React.FC = () => {
                                     temperature: data.inference_temperature !== undefined ? Number(data.inference_temperature) : existing.inference.temperature
                                 },
                                 activeStrategyId: data.active_strategy_id || existing.activeStrategyId,
-                                strategies: data.strategies_config || existing.strategies
+                                strategies: data.strategies_config || existing.strategies,
+                                avatarChat: data.avatar_chat_config || existing.avatarChat
                             }
                         };
                     });
                 }
             }
         } catch (e) {
-            console.error("Failed to fetch remote config", e);
+            logger.error("Failed to fetch remote config", e);
         }
     };
 
@@ -258,8 +261,103 @@ const App: React.FC = () => {
         });
     };
 
+    // URL Synchronization Logic
+    useEffect(() => {
+        const syncUrl = () => {
+            const currentPath = window.location.pathname;
+
+            // Don't override auth pages - let Clerk handle navigation between sign-in/sign-up
+            if (currentPath === '/sign-in' || currentPath === '/sign-up') {
+                return;
+            }
+
+            let newPath = '/';
+            if (currentView === 'landing') {
+                newPath = '/';
+            } else if (appMode === 'global') {
+                newPath = activeGlobalPage === 'dashboard' ? '/dashboard' :
+                    activeGlobalPage === 'notebooks' ? '/notebooks' :
+                        activeGlobalPage === 'settings' ? '/settings' :
+                            activeGlobalPage === 'server' ? '/server' : '/dashboard';
+            } else if (appMode === 'workspace' && selectedNotebookId) {
+                newPath = `/notebook/${selectedNotebookId}/${activeWorkspacePage === 'home' ? '' : activeWorkspacePage}`;
+            }
+
+            // Cleanup trailing slash if not root
+            if (newPath.length > 1 && newPath.endsWith('/')) {
+                newPath = newPath.slice(0, -1);
+            }
+
+            if (currentPath !== newPath) {
+                window.history.pushState({}, '', newPath);
+                setPath(newPath);
+            }
+        };
+
+        // Delay sync slightly to allow state to settle
+        const timeout = setTimeout(syncUrl, 50);
+        return () => clearTimeout(timeout);
+    }, [currentView, appMode, activeGlobalPage, activeWorkspacePage, selectedNotebookId]);
+
+    // Initial URL Parsing
+    useEffect(() => {
+        const handleInitialRoute = () => {
+            const currentPath = window.location.pathname;
+
+            // Skip if landing page
+            if (currentPath === '/' || currentPath === '/sign-in' || currentPath === '/sign-up') return;
+
+            // Wait for auth to load
+            if (!isLoaded) return;
+
+            // If not signed in and trying to access protected route, redirect will be handled by auth effect
+            if (isLoaded && !isSignedIn) return;
+
+            // Switch to app view
+            setCurrentView('app');
+
+            // Global Routes
+            if (currentPath.startsWith('/dashboard')) {
+                setAppMode('global');
+                setActiveGlobalPage('dashboard');
+            } else if (currentPath.startsWith('/notebooks')) {
+                setAppMode('global');
+                setActiveGlobalPage('notebooks');
+            } else if (currentPath.startsWith('/settings')) {
+                setAppMode('global');
+                setActiveGlobalPage('settings');
+            } else if (currentPath.startsWith('/server')) {
+                setAppMode('global');
+                setActiveGlobalPage('server');
+            }
+            // Workspace Routes /notebook/:id/:page?
+            else if (currentPath.startsWith('/notebook/')) {
+                const parts = currentPath.split('/');
+                const notebookId = parts[2];
+                const page = parts[3] as WorkspacePage | undefined;
+
+                if (notebookId) {
+                    setAppMode('workspace');
+                    setSelectedNotebookId(notebookId);
+                    setActiveWorkspacePage(page || 'home');
+                    // Note: Notebook name/desc won't be set until fetched
+                    ensureNotebookConfig(notebookId);
+                    fetchRemoteConfig(notebookId);
+                }
+            }
+        };
+
+        handleInitialRoute();
+    }, [isLoaded, isSignedIn]);
+
     const handleStart = () => {
-        window.history.pushState({}, '', '/sign-in');
+        if (isSignedIn) {
+            window.history.pushState({}, '', '/dashboard');
+            setPath('/dashboard');
+        } else {
+            window.history.pushState({}, '', '/sign-in');
+            setPath('/sign-in');
+        }
         setCurrentView('app');
         setAppMode('global');
         setActiveGlobalPage('dashboard');
@@ -364,8 +462,10 @@ const App: React.FC = () => {
                 </SignedOut>
                 <SignedIn>
                     <div className="min-h-screen bg-background text-text-light font-sans flex overflow-hidden relative selection:bg-primary/20 selection:text-primary">
-                        {/* Authentication Header */}
-                        <Header />
+                        {/* Authentication Header - Hidden on chat and search pages to avoid covering buttons */}
+                        {!(appMode === 'workspace' && (activeWorkspacePage === 'chat' || activeWorkspacePage === 'search')) && (
+                            <Header />
+                        )}
 
                         {/* Ambient Background Mesh */}
                         <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
@@ -450,7 +550,7 @@ const App: React.FC = () => {
                                             />
                                         )}
                                         {activeWorkspacePage === 'chat' && (
-                                            hasPagePermission(user, 'chat') ? (
+                                            hasPagePermission(user, 'chat', selectedNotebookId) ? (
                                                 <NotebookChat
                                                     config={currentConfig}
                                                     notebookId={selectedNotebookId}
@@ -462,7 +562,7 @@ const App: React.FC = () => {
                                             )
                                         )}
                                         {activeWorkspacePage === 'documents' && (
-                                            hasPagePermission(user, 'documents') ? (
+                                            hasPagePermission(user, 'documents', selectedNotebookId) ? (
                                                 <NotebookDocuments
                                                     notebookId={selectedNotebookId}
                                                     notebookName={selectedNotebookName}
@@ -479,7 +579,7 @@ const App: React.FC = () => {
                                             )
                                         )}
                                         {activeWorkspacePage === 'search' && (
-                                            hasPagePermission(user, 'search') ? (
+                                            hasPagePermission(user, 'search', selectedNotebookId) ? (
                                                 <PlaygroundSearch
                                                     notebookId={selectedNotebookId}
                                                     config={currentConfig}
@@ -489,11 +589,8 @@ const App: React.FC = () => {
                                                 <div className="flex items-center justify-center h-full text-text-subtle">Access Denied</div>
                                             )
                                         )}
-                                        {activeWorkspacePage === 'chart' && (
-                                            hasPagePermission(user, 'chart') ? <PlaygroundChart /> : <div className="flex items-center justify-center h-full text-text-subtle">Access Denied</div>
-                                        )}
                                         {activeWorkspacePage === 'settings' && (
-                                            hasPagePermission(user, 'settings') ? (
+                                            hasPagePermission(user, 'settings', selectedNotebookId) ? (
                                                 <NotebookSettings
                                                     key={selectedNotebookId}
                                                     notebookId={selectedNotebookId}
@@ -521,12 +618,20 @@ const App: React.FC = () => {
         );
     }
 
+    // Render auth pages when on auth routes (even if in landing view)
+    if (path === '/sign-up') {
+        return <SignUpPage />;
+    }
+
+    if (path === '/sign-in') {
+        return <SignInPage />;
+    }
+
     return (
         <div className="min-h-screen bg-background text-text-light font-sans selection:bg-primary/30 selection:text-white flex flex-col">
             <Navbar onStart={handleStart} />
             <main className="flex flex-col w-full flex-grow">
                 <Hero onStart={handleStart} />
-                <Workflow />
                 <RagExplanation onStart={handleStart} />
             </main>
             <Footer />

@@ -22,6 +22,8 @@ import {
     Plus
 } from 'lucide-react';
 import Button from './ui/Button';
+import { isCreatedByAdmin } from '../utils/admin';
+import { logger } from '../utils/logger';
 
 // Constants
 const PULL_NOTEBOOKS_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/22e943ae-6bc7-43b3-9ca4-16bdc715a84b-pull-notebooks';
@@ -400,13 +402,20 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
                 setNotebookToDelete(null);
             }
         } catch (e) {
-            console.error("Delete failed", e);
+            logger.error("Delete failed", e);
         } finally {
             setIsDeleting(false);
         }
     };
 
     const handleCreate = async (data: { title: string; description: string; embeddingModel: string }) => {
+        // Check if user was created by admin
+        if (isCreatedByAdmin(user)) {
+            alert("Users created by admins cannot create notebooks.");
+            setIsCreateModalOpen(false);
+            return;
+        }
+
         setIsCreating(true);
         // Generate IDs
         const newId = crypto.randomUUID();
@@ -457,7 +466,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
             setIsCreateModalOpen(false);
 
         } catch (error) {
-            console.error("Failed to create notebook:", error);
+            logger.error("Failed to create notebook", error);
             alert("Failed to create notebook. Please ensure the backend is online.");
         } finally {
             setIsCreating(false);
@@ -501,7 +510,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
                         if (d.json) d = d.json;
                         mergedData = { ...mergedData, ...d };
                     }
-                } catch (err) { console.warn(err); }
+                } catch (err) { logger.warn("Error fetching notebook details", err); }
                 return mergedData;
             }));
 
@@ -576,7 +585,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
             });
 
         } catch (e) {
-            console.error("Failed to fetch dashboard data", e);
+            logger.error("Failed to fetch dashboard data", e);
         } finally {
             setIsLoading(false);
         }
@@ -639,7 +648,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
                         <Zap className={`w-5 h-5 ${isLoading ? 'text-primary animate-pulse' : ''}`} />
                     </button>
                     <button
-                        onClick={() => setIsCreateModalOpen(true)}
+                        onClick={() => {
+                            if (isCreatedByAdmin(user)) {
+                                alert("Users created by admins cannot create notebooks.");
+                                return;
+                            }
+                            setIsCreateModalOpen(true);
+                        }}
                         className="flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-black font-bold text-sm shadow-[0_0_20px_rgba(126,249,255,0.3)] hover:shadow-[0_0_30px_rgba(126,249,255,0.5)] transition-all hover:-translate-y-0.5 active:translate-y-0"
                     >
                         <ArrowUpRight className="w-4 h-4 stroke-[3px]" />
@@ -770,7 +785,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNotebook, onRegiste
                                                     <div className="text-[10px] text-text-subtle/50 font-mono">Created {row.created}</div>
                                                 </div>
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); setNotebookToDelete(row.id); }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (isCreatedByAdmin(user)) {
+                                                            alert("Users created by admins cannot delete notebooks.");
+                                                            return;
+                                                        }
+                                                        setNotebookToDelete(row.id);
+                                                    }}
                                                     className="p-2 rounded-lg hover:bg-red-500/10 text-text-subtle hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
                                                     title="Delete Notebook"
                                                 >

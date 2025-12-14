@@ -6,6 +6,7 @@ import { Save, Search, Sliders, Check, RefreshCw, Cpu, Activity, BookOpen, Lock,
 import Button from '../ui/Button';
 import type { NotebookConfig, StrategyConfig } from '../../App';
 import { RETRIEVAL_STRATEGIES } from './constants';
+import { logger } from '../../utils/logger';
 
 // --- Custom Icons ---
 
@@ -73,13 +74,13 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
 
         const fetchSettings = async () => {
             if (!notebookId) {
-                console.warn("Skipping settings fetch: No notebookId provided");
+                logger.warn("Skipping settings fetch: No notebookId provided");
                 setIsLoadingSettings(false);
                 return;
             }
 
             setIsLoadingSettings(true);
-            console.log(`📥 Fetching settings for notebook: ${notebookId}`);
+            logger.debug('Fetching settings for notebook', { notebookId });
 
             try {
                 // Use POST with notebook_id for n8n compatibility
@@ -95,7 +96,7 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
 
                 const text = await response.text();
                 if (!text) {
-                    console.log("⚠️ Webhook returned empty body. Using local defaults.");
+                    logger.info("Webhook returned empty body. Using local defaults.");
                     return;
                 }
 
@@ -104,13 +105,13 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
                     const json = JSON.parse(text);
                     data = Array.isArray(json) ? json[0] : json;
                 } catch (e) {
-                    console.warn("Invalid JSON from settings webhook", text);
+                    logger.warn("Invalid JSON from settings webhook", { text });
                     return;
                 }
 
                 if (!isMounted) return;
 
-                console.log("✅ Received Remote Settings:", data);
+                logger.debug("Received Remote Settings", { data });
 
                 // Map DB/Webhook response format back to Frontend Config format
                 const newConfig: Partial<NotebookConfig> = {};
@@ -147,13 +148,18 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
                     newConfig.strategies = data.strategies_config;
                 }
 
+                // 5. Avatar Chat Config
+                if (data.avatar_chat_config && typeof data.avatar_chat_config === 'object') {
+                    newConfig.avatarChat = data.avatar_chat_config;
+                }
+
                 // Merge into parent state
                 if (Object.keys(newConfig).length > 0) {
                     onConfigChange({ ...config, ...newConfig });
                 }
 
             } catch (error) {
-                console.error("❌ Failed to load remote settings:", error);
+                logger.error("Failed to load remote settings", error);
             } finally {
                 if (isMounted) setIsLoadingSettings(false);
             }
@@ -233,10 +239,11 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
             inference_temperature: config.inference.temperature,
             active_strategy_id: config.activeStrategyId,
             strategies_config: strategiesConfig,
+            avatar_chat_config: config.avatarChat || null, // Save avatar chat settings
             user_id: user?.id
         };
 
-        console.log("💾 Saving Settings to Webhook:", payload);
+        logger.debug("Saving Settings to Webhook", { payload });
 
         try {
             const response = await fetch('https://n8nserver.sportnavi.de/webhook/e64ae3ac-0d81-4303-be26-d18fd2d1faf6-notebook-settings', {
@@ -254,7 +261,7 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
                 alert(`Remote save failed. Server responded with ${response.status}: ${errorText}`);
             }
         } catch (error: any) {
-            console.warn("Webhook Sync Warning:", error);
+            logger.warn("Webhook Sync Warning", error);
 
             if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
                 alert("✅ Settings saved locally.\n\n⚠️ Note: Remote synchronization to the database failed (Network/CORS error). Your settings are active for this session and stored in your browser.");

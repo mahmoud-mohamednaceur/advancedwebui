@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ServerMetrics } from '../types/monitoring';
+import { logger } from '../utils/logger';
 
 // Default/placeholder metrics for instant rendering
 const DEFAULT_METRICS: ServerMetrics = {
@@ -74,7 +75,7 @@ export const useServerMetrics = (): UseServerMetricsReturn => {
         const ws = new WebSocket('ws://localhost:3001/ws/logs');
 
         ws.onopen = () => {
-            console.log('✅ Server Metrics WebSocket connected');
+            logger.debug('Server Metrics WebSocket connected');
             setIsConnected(true);
             setError(null);
             // Send monitoring request immediately
@@ -90,25 +91,25 @@ export const useServerMetrics = (): UseServerMetricsReturn => {
                     setIsLoading(false);
                 } else if (data.type === 'connected') {
                     // Connection confirmed, waiting for first metrics
-                    console.log('📊 Monitoring started, waiting for metrics...');
+                    logger.debug('Monitoring started, waiting for metrics');
                 } else if (data.type === 'error') {
                     setError(data.message);
                     setIsLoading(false);
                 }
             } catch (e) {
-                console.error('Failed to parse metrics:', e);
+                logger.error('Failed to parse metrics', e);
             }
         };
 
         ws.onerror = (e) => {
-            console.error('WebSocket error:', e);
+            logger.error('WebSocket error', e);
             setError('Connection error - is the server running?');
             setIsConnected(false);
             setIsLoading(false);
         };
 
         ws.onclose = () => {
-            console.log('WebSocket closed');
+            logger.debug('WebSocket closed');
             setIsConnected(false);
             // Auto-reconnect after 2 seconds (faster reconnect)
             reconnectTimeoutRef.current = window.setTimeout(() => {

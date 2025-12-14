@@ -188,7 +188,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mode, activePage, onNavigate, onBackT
               />
             )}
 
-            {(hasPagePermission(user, 'search', notebookId) || hasPagePermission(user, 'chart', notebookId)) && (
+            {hasPagePermission(user, 'search', notebookId) && (
               <div className="text-[10px] font-bold text-text-subtle/50 uppercase tracking-widest mb-2 px-4 mt-6">Playground</div>
             )}
 
@@ -198,14 +198,6 @@ const Sidebar: React.FC<SidebarProps> = ({ mode, activePage, onNavigate, onBackT
                 label="Search"
                 active={activePage === 'search'}
                 onClick={() => onNavigate('search')}
-              />
-            )}
-            {hasPagePermission(user, 'chart', notebookId) && (
-              <SidebarItem
-                icon={BarChart2}
-                label="Chart"
-                active={activePage === 'chart'}
-                onClick={() => onNavigate('chart')}
               />
             )}
 

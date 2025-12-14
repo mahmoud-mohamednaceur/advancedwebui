@@ -11,6 +11,7 @@ import {
 import Button from '../ui/Button';
 import { NotebookConfig } from '../../App';
 import { StrategySelector } from './StrategySelector';
+import { logger } from '../../utils/logger';
 
 // --- Types ---
 
@@ -690,6 +691,12 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
         let isMounted = true;
 
         const fetchHistory = async () => {
+            logger.debug('Fetching chat history', {
+                notebookId,
+                userId: user?.id,
+                userEmail: user?.primaryEmailAddress?.emailAddress
+            });
+
             setIsLoadingHistory(true);
             try {
                 const response = await fetch(PULL_HISTORY_WEBHOOK, {
@@ -705,7 +712,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                         const parsed = JSON.parse(text);
                         data = Array.isArray(parsed) ? parsed : (parsed.data ? parsed.data : [parsed]);
                     } catch (e) {
-                        console.warn("Invalid JSON response from history webhook");
+                        logger.warn("Invalid JSON response from history webhook");
                     }
                 }
 
@@ -737,19 +744,19 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                 setMessages(historyMessages);
 
             } catch (err) {
-                console.error("Failed to load conversation history:", err);
+                logger.error("Failed to load conversation history", err);
             } finally {
                 if (isMounted) setIsLoadingHistory(false);
             }
         };
 
-        if (notebookId) {
+        if (notebookId && user?.id) {
             setMessages([]);
             fetchHistory();
         }
 
         return () => { isMounted = false; };
-    }, [notebookId]);
+    }, [notebookId, user?.id]); // Added user?.id dependency
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -780,7 +787,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-        }).catch(err => console.error("Failed to save chat history:", err));
+        }).catch(err => logger.error("Failed to save chat history", err));
     };
 
     const executeClearHistory = async () => {
@@ -799,7 +806,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
             setMessages([]);
             setActiveMessage(null);
         } catch (error) {
-            console.error("❌ Network Error Clearing History:", error);
+            logger.error("Network Error Clearing History", error);
         }
     };
 
@@ -884,7 +891,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
             saveMessageToHistory(assistantMsg, { chunks_count: normalizedChunks.length });
 
         } catch (error: any) {
-            console.error("Pipeline Error:", error);
+            logger.error("Pipeline Error", error);
             const errorMsg: Message = {
                 id: crypto.randomUUID(),
                 role: 'assistant',

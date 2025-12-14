@@ -1,107 +1,82 @@
-import React, { useState, useEffect } from 'react';
-import { FolderOpen, Database, MessageSquare, Search, Cpu, CheckCircle2, Binary } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { FolderOpen, Database, MessageSquare, Search, Cpu, CheckCircle2, Binary, ArrowRight } from 'lucide-react';
 import Button from './ui/Button';
 
-const Node = ({ icon: Icon, title, subtitle, color, isActive }: { icon: any, title: string, subtitle: string, color: string, isActive: boolean }) => {
-  const colorClass = color === 'primary' ? 'text-primary shadow-neon-primary'
-    : color === 'secondary' ? 'text-secondary shadow-neon-secondary'
-      : 'text-tertiary shadow-[0_0_15px_#FDFF00]';
+const nodes = [
+  { icon: FolderOpen, title: "Data Ingestion", subtitle: "Connect to diverse sources.", color: "primary" },
+  { icon: Binary, title: "Processing", subtitle: "Clean, chunk, and embed data.", color: "secondary" },
+  { icon: Database, title: "Vector Database", subtitle: "Secure, efficient storage.", color: "tertiary" },
+  { icon: MessageSquare, title: "User Query", subtitle: "Natural language input.", color: "primary" },
+  { icon: Search, title: "Retrieval", subtitle: "Find relevant information.", color: "secondary" },
+  { icon: Cpu, title: "LLM Generation", subtitle: "Synthesize informed responses.", color: "tertiary" },
+  { icon: CheckCircle2, title: "Augmented Answer", subtitle: "Accurate, context-rich output.", color: "primary" }
+];
 
-  const borderClass = color === 'primary' ? 'border-primary/50'
-    : color === 'secondary' ? 'border-secondary/50'
-      : 'border-tertiary/50';
-
-  const activeGlow = color === 'primary' ? 'shadow-[0_0_30px_rgba(126,249,255,0.3)]'
-    : color === 'secondary' ? 'shadow-[0_0_30px_rgba(224,59,138,0.3)]'
-      : 'shadow-[0_0_30px_rgba(253,255,0,0.3)]';
+const Node = ({ icon: Icon, title, subtitle, color }: { icon: any, title: string, subtitle: string, color: string }) => {
+  const colorClass = color === 'primary' ? 'text-primary'
+    : color === 'secondary' ? 'text-secondary'
+      : 'text-tertiary';
 
   return (
-    <div className={`flex-shrink-0 w-72 flex flex-col items-center justify-center p-8 rounded-2xl bg-surface/40 backdrop-blur-md border border-white/5 transition-all duration-700 relative group z-10 
-      ${isActive ? `-translate-y-2 bg-surface/60 ${borderClass} ${activeGlow}` : 'hover:-translate-y-2 hover:shadow-2xl hover:bg-surface/60 hover:border-white/20'}
-    `}>
-
-      {/* Icon Container */}
-      <div className={`mb-6 p-4 rounded-full bg-background/80 border border-white/10 transition-transform duration-700 ${colorClass} shadow-lg
-        ${isActive ? 'scale-110' : 'group-hover:scale-110'}
-      `}>
-        <Icon className="w-10 h-10" strokeWidth={1.5} />
+    <div className="flex-shrink-0 w-64 flex flex-col items-center justify-center p-6 mx-4 transition-transform hover:scale-105 group relative">
+      {/* Icon - Floating Effect */}
+      <div className={`mb-4 p-4 rounded-full bg-background/50 border border-white/10 backdrop-blur-md ${colorClass} shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10 group-hover:shadow-[0_0_25px_rgba(255,255,255,0.2)] transition-all duration-500`}>
+        <Icon className="w-8 h-8" strokeWidth={1.5} />
       </div>
 
-      <h3 className={`text-xl font-bold text-white mb-2 tracking-tight transition-all duration-300
-        ${isActive ? 'text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400' : 'group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-gray-400'}
-      `}>{title}</h3>
-      <p className={`text-sm text-text-subtle text-center leading-relaxed transition-colors duration-300
-        ${isActive ? 'text-text-light' : 'group-hover:text-text-light'}
-      `}>{subtitle}</p>
+      <h3 className="text-lg font-bold text-white mb-1 tracking-tight text-center">{title}</h3>
+      <p className="text-xs text-text-subtle text-center leading-relaxed">{subtitle}</p>
 
-      {/* Active Glow effect on hover/active */}
-      <div className={`absolute inset-0 rounded-2xl transition-opacity duration-700 bg-${color} blur-xl -z-10
-        ${isActive ? 'opacity-20' : 'opacity-0 group-hover:opacity-10'}
-      `}></div>
+      {/* Reflection/Ground Shadow */}
+      <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-20 h-4 bg-black/50 blur-lg rounded-[100%] group-hover:w-24 group-hover:bg-primary/20 transition-all duration-500"></div>
     </div>
   );
 };
 
-const Connector = ({ isActive }: { isActive: boolean }) => (
-  <div className="flex-shrink-0 w-12 md:w-24 h-[2px] relative overflow-hidden bg-white/10">
-    <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-primary/80 to-transparent w-1/2 transition-all duration-1000 ease-linear
-        ${isActive ? 'translate-x-[200%]' : '-translate-x-full'}
-    `}></div>
-  </div>
-);
-
 const Workflow: React.FC = () => {
-  const [activeStep, setActiveStep] = useState(0);
-  const totalSteps = 7; // 7 nodes
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveStep((prev) => (prev + 1) % totalSteps);
-    }, 1500); // Change step every 1.5s
-
-    return () => clearInterval(interval);
-  }, []);
-
   return (
-    <section id="workflow" className="py-16 md:py-24 bg-background relative overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 text-center mb-12">
-        <h2 className="text-3xl md:text-4xl font-bold text-white mb-4 tracking-tight">Your Data Workflow, Visualized.</h2>
-        <p className="text-text-subtle max-w-2xl mx-auto">See how n8n orchestrates complex RAG pipelines, from data ingestion to intelligent response. Minimal steps, maximum impact.</p>
-      </div>
+    <section className="py-20 bg-background relative overflow-hidden perspective-container">
+      <style>{`
+                .perspective-container {
+                    perspective: 1000px;
+                }
+                .floor-plane {
+                    transform: rotateX(20deg) scale(0.9);
+                    transform-style: preserve-3d;
+                }
+                @keyframes marquee {
+                    0% { transform: translateX(0); }
+                    100% { transform: translateX(-50%); }
+                }
+                .animate-marquee {
+                    animation: marquee 30s linear infinite;
+                    width: max-content;
+                }
+                .animate-marquee:hover {
+                    animation-play-state: paused;
+                }
+            `}</style>
 
-      {/* Horizontal Scroll Container */}
-      <div className="relative w-full">
-        <div className="absolute left-0 top-0 bottom-0 w-12 md:w-32 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none"></div>
-        <div className="absolute right-0 top-0 bottom-0 w-12 md:w-32 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none"></div>
+      {/* Background Atmosphere */}
+      <div className="absolute inset-0 bg-gradient-to-b from-background via-transparent to-background z-10 pointer-events-none"></div>
 
-        <div className="flex overflow-x-auto pb-12 pt-4 px-6 md:px-12 gap-0 items-center scrollbar-hide snap-x snap-mandatory">
-          {/* Spacer to ensure left padding works correctly in overflow container */}
-          <div className="w-6 md:w-12 flex-shrink-0"></div>
-
-          <div className="snap-center px-2"><Node isActive={activeStep === 0} icon={FolderOpen} title="Data Ingestion" subtitle="Connect to diverse sources." color="primary" /></div>
-          <Connector isActive={activeStep === 0} />
-          <div className="snap-center px-2"><Node isActive={activeStep === 1} icon={Binary} title="Processing" subtitle="Clean, chunk, and embed data." color="secondary" /></div>
-          <Connector isActive={activeStep === 1} />
-          <div className="snap-center px-2"><Node isActive={activeStep === 2} icon={Database} title="Vector Database" subtitle="Secure, efficient storage." color="tertiary" /></div>
-          <Connector isActive={activeStep === 2} />
-          <div className="snap-center px-2"><Node isActive={activeStep === 3} icon={MessageSquare} title="User Query" subtitle="Natural language input." color="primary" /></div>
-          <Connector isActive={activeStep === 3} />
-          <div className="snap-center px-2"><Node isActive={activeStep === 4} icon={Search} title="Retrieval" subtitle="Find relevant information." color="secondary" /></div>
-          <Connector isActive={activeStep === 4} />
-          <div className="snap-center px-2"><Node isActive={activeStep === 5} icon={Cpu} title="LLM Generation" subtitle="Synthesize informed responses." color="tertiary" /></div>
-          <Connector isActive={activeStep === 5} />
-          <div className="snap-center px-2"><Node isActive={activeStep === 6} icon={CheckCircle2} title="Augmented Answer" subtitle="Accurate, context-rich output." color="primary" /></div>
-
-          {/* Spacer to ensure right padding works correctly in overflow container */}
-          <div className="w-6 md:w-12 flex-shrink-0"></div>
+      {/* 3D Floor Effect */}
+      <div className="floor-plane relative z-0 py-10">
+        {/* Double the nodes for seamless loop */}
+        <div className="flex animate-marquee">
+          {[...nodes, ...nodes, ...nodes].map((node, i) => (
+            <div key={i} className="px-4">
+              <Node
+                icon={node.icon}
+                title={node.title}
+                subtitle={node.subtitle}
+                color={node.color}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="text-center mt-4">
-        <Button variant="secondary" className="!h-14 !px-8 !text-lg shadow-neon-secondary">
-          View Integration Guides
-        </Button>
-      </div>
     </section>
   );
 };

@@ -7,6 +7,8 @@ import {
     MoreVertical, Calendar, FileText, Sparkles, Search, Command
 } from 'lucide-react';
 import Button from './ui/Button';
+import { isAdmin, hasNotebookPermission, isCreatedByAdmin } from '../utils/admin';
+import { logger } from '../utils/logger';
 
 // Constants
 const CREATE_NOTEBOOK_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/22e943ae-6bc7-43b3-9ca4-16bdc715a84b-create-notebook';
@@ -341,6 +343,18 @@ interface DocumentsPageProps {
 
 const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegisterEmbedding }) => {
     const { user } = useUser();
+
+    // Debug user information on mount
+    useEffect(() => {
+        logger.debug('DocumentsPage user information', {
+            userId: user?.id,
+            email: user?.primaryEmailAddress?.emailAddress,
+            firstName: user?.firstName,
+            lastName: user?.lastName,
+            role: user?.publicMetadata?.role
+        });
+    }, [user?.id]);
+
     const [notebooks, setNotebooks] = useState<Notebook[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -380,7 +394,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
                             data = data.map((item: any) => item.json);
                         }
                     } catch (e) {
-                        console.warn("Invalid JSON response from notebook fetch");
+                        logger.warn("Invalid JSON response from notebook fetch");
                     }
 
                     if (!isMounted) return;
@@ -411,10 +425,10 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
 
                     setNotebooks(mappedNotebooks);
                 } else {
-                    console.error("Failed to fetch notebooks:", response.status);
+                    logger.error("Failed to fetch notebooks", { status: response.status });
                 }
             } catch (error) {
-                console.error("Error fetching notebooks:", error);
+                logger.error("Error fetching notebooks", error);
             } finally {
                 if (isMounted) setIsLoading(false);
             }
@@ -427,6 +441,19 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
 
     const handleRequestDelete = (notebook: Notebook, e: React.MouseEvent) => {
         e.stopPropagation();
+
+        // Check if user was created by admin
+        if (isCreatedByAdmin(user)) {
+            alert("Users created by admins cannot delete notebooks.");
+            return;
+        }
+
+        // Check if user has permission to delete this notebook
+        if (!isAdmin(user) && !hasNotebookPermission(user, notebook.id)) {
+            alert("You don't have permission to delete this notebook.");
+            return;
+        }
+
         setNotebookToDelete(notebook);
     };
 
@@ -457,7 +484,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
             setNotebookToDelete(null);
 
         } catch (error) {
-            console.error("Error deleting notebook:", error);
+            logger.error("Error deleting notebook", error);
             alert("Failed to delete notebook. Please check your connection.");
         } finally {
             setIsDeletingSingle(false);
@@ -465,6 +492,24 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
     };
 
     const handleClearClick = () => {
+        // Check if user was created by admin
+        if (isCreatedByAdmin(user)) {
+            alert("Users created by admins cannot clear notebooks.");
+            return;
+        }
+
+        // Only admins or users with at least one notebook permission can clear
+        if (!isAdmin(user)) {
+            const metadata = user?.publicMetadata || (user as any)?.public_metadata;
+            const hasAnyNotebook = metadata?.notebook_permissions &&
+                Object.keys(metadata.notebook_permissions).length > 0;
+
+            if (!hasAnyNotebook) {
+                alert("You don't have permission to clear notebooks.");
+                return;
+            }
+        }
+
         if (confirmClear) {
             handleExecuteClear();
         } else {
@@ -493,7 +538,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
 
             setNotebooks([]);
         } catch (error: any) {
-            console.error("Failed to delete all notebooks:", error);
+            logger.error("Failed to delete all notebooks", error);
             alert(`Failed to delete notebooks: ${error.message}`);
         } finally {
             setIsClearing(false);
@@ -501,6 +546,13 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
     };
 
     const handleCreate = async (data: { title: string; description: string; embeddingModel: string }) => {
+        // Check if user was created by admin
+        if (isCreatedByAdmin(user)) {
+            alert("Users created by admins cannot create notebooks.");
+            setIsCreateModalOpen(false);
+            return;
+        }
+
         setIsCreating(true);
         const newId = crypto.randomUUID();
         const now = new Date().toISOString();
@@ -546,7 +598,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
             setIsCreateModalOpen(false);
 
         } catch (error) {
-            console.error("Failed to create notebook:", error);
+            logger.error("Failed to create notebook", error);
             alert("Failed to create notebook. Please ensure the backend is online.");
         } finally {
             setIsCreating(false);
@@ -625,7 +677,9 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
                     <Button
                         variant="outline"
                         onClick={handleClearClick}
-                        disabled={isClearing || (notebooks.length === 0 && !isClearing)}
+                        disabled={isClearing || notebooks.length === 0 ||
+                            isCreatedByAdmin(user) ||
+                            (!isAdmin(user) && !Object.keys((user?.publicMetadata || (user as any)?.public_metadata)?.notebook_permissions || {}).length)}
                         className={`!h-11 !px-5 !text-xs border-white/10 uppercase tracking-wider transition-all duration-300 backdrop-blur-md rounded-xl
                     ${confirmClear
                                 ? 'bg-red-500/10 text-red-400 border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.2)]'
@@ -648,7 +702,13 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
                     </Button>
                     <Button
                         variant="primary"
-                        onClick={() => setIsCreateModalOpen(true)}
+                        onClick={() => {
+                            if (isCreatedByAdmin(user)) {
+                                alert("Users created by admins cannot create notebooks.");
+                                return;
+                            }
+                            setIsCreateModalOpen(true);
+                        }}
                         className="!h-11 !px-6 shadow-neon-primary uppercase tracking-wider !text-xs cursor-pointer rounded-xl flex items-center gap-2 hover:translate-y-[-2px] transition-transform"
                     >
                         <Plus className="w-4 h-4" /> New Notebook
@@ -750,13 +810,15 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ onOpenNotebook, onRegiste
                                         </div>
 
                                         <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={(e) => handleRequestDelete(notebook, e)}
-                                                title="Delete Notebook"
-                                                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-subtle hover:text-white hover:bg-red-500/10 hover:border hover:border-red-500/20 transition-all opacity-0 group-hover:opacity-100"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            {(isAdmin(user) || hasNotebookPermission(user, notebook.id)) && (
+                                                <button
+                                                    onClick={(e) => handleRequestDelete(notebook, e)}
+                                                    title="Delete Notebook"
+                                                    className="w-8 h-8 rounded-lg flex items-center justify-center text-text-subtle hover:text-white hover:bg-red-500/10 hover:border hover:border-red-500/20 transition-all opacity-0 group-hover:opacity-100"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
                                             <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center text-text-subtle group-hover:text-white group-hover:bg-primary/10 group-hover:border-primary/20 group-hover:text-primary transition-all">
                                                 <ArrowRight className="w-4 h-4" />
                                             </div>

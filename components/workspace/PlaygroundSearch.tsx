@@ -7,6 +7,7 @@ import Button from '../ui/Button';
 import { RetrievalPanel } from './NotebookChat';
 import { NotebookConfig } from '../../App';
 import { StrategySelector } from './StrategySelector';
+import { logger } from '../../utils/logger';
 
 interface PlaygroundSearchProps {
     notebookId: string;
@@ -62,7 +63,7 @@ const PlaygroundSearch: React.FC<PlaygroundSearchProps> = ({ notebookId, config,
             setRawResults(data);
 
         } catch (err: any) {
-            console.error("Playground Search Error:", err);
+            logger.error("Playground Search Error", err);
             setError(err.message || "An unexpected error occurred during retrieval.");
         } finally {
             setIsLoading(false);

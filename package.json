@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n server,vite -c blue,green \"node server/index.js\" \"npx vite\"",
+    "dev": "node start-dev.js",
     "server": "node server/index.js",
     "vite": "npx vite",
     "build": "vite build",
@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.58.0",
+    "@livekit/components-react": "^2.9.17",
     "@types/ssh2": "^1.15.5",
     "@types/ws": "^8.18.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "livekit-client": "^2.16.1",
     "lucide-react": "^0.554.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -28,7 +30,7 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "concurrently": "^9.2.1",
+    "npm-run-all": "^4.1.5",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

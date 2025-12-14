@@ -4,6 +4,7 @@ import { WorkspacePage } from '../../config';
 import Button from '../ui/Button';
 import { useUser } from '@clerk/clerk-react';
 import { hasPagePermission } from '../../utils/admin';
+import { logger } from '../../utils/logger';
 
 // Constants
 const UPDATE_NOTEBOOK_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/22e943ae-6bc7-43b3-9ca4-16bdc715a84b-update-notebook-information';
@@ -111,7 +112,7 @@ const NotebookDashboard: React.FC<NotebookDashboardProps> = ({ notebookId, noteb
             wsRef.current = ws;
 
             ws.onopen = () => {
-                console.log('Connected to monitoring WS');
+                logger.debug('Connected to monitoring WS');
                 setIsMonitoring(true);
                 ws.send(JSON.stringify({ action: 'start_monitoring' }));
             };
@@ -123,18 +124,18 @@ const NotebookDashboard: React.FC<NotebookDashboardProps> = ({ notebookId, noteb
                         setMonitoringData(data.data);
                     }
                 } catch (e) {
-                    console.error('Failed to parse WS message', e);
+                    logger.error('Failed to parse WS message', e);
                 }
             };
 
             ws.onclose = () => {
-                console.log('Monitoring WS disconnected');
+                logger.debug('Monitoring WS disconnected');
                 setIsMonitoring(false);
                 reconnectTimer = setTimeout(connect, 3000);
             };
 
             ws.onerror = (e) => {
-                console.error('WS Error', e);
+                logger.error('WS Error', e);
                 ws.close();
             };
         };
@@ -200,7 +201,7 @@ const NotebookDashboard: React.FC<NotebookDashboardProps> = ({ notebookId, noteb
                     }
                 }
             } catch (e) {
-                console.error("Failed to fetch dashboard stats", e);
+                logger.error("Failed to fetch dashboard stats", e);
                 if (isMounted) setStatus('error');
             }
         };
@@ -243,7 +244,7 @@ const NotebookDashboard: React.FC<NotebookDashboardProps> = ({ notebookId, noteb
             if (!response.ok) throw new Error(`Server error`);
             setIsEditing(false);
         } catch (error) {
-            console.error("Failed to update notebook:", error);
+            logger.error("Failed to update notebook", error);
             alert("Failed to save changes.");
         } finally {
             setIsSaving(false);

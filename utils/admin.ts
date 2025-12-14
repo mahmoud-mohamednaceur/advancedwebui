@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 /**
  * Helper to get metadata from user (handles both camelCase and snake_case)
  */
@@ -66,20 +68,62 @@ export const hasPagePermission = (user: any, pageId: string, notebookId?: string
  * @returns true if access is allowed
  */
 export const hasNotebookPermission = (user: any, notebookId: string): boolean => {
-    if (!user) return false;
-    if (isAdmin(user)) return true;
+    logger.debug('Checking notebook permissions', {
+        userId: user?.id,
+        email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress,
+        notebookId
+    });
+
+    if (!user) {
+        logger.debug('No user, denying notebook access');
+        return false;
+    }
+
+    if (isAdmin(user)) {
+        logger.debug('User is admin, granting notebook access');
+        return true;
+    }
 
     const metadata = getMetadata(user);
+    logger.debug('User metadata for notebook permission', { metadata });
 
     // 1. Check Granular Permissions
     if (metadata?.notebook_permissions) {
-        // If the key exists (even if empty array), they have access to the notebook
-        if (metadata.notebook_permissions[notebookId]) {
+        // Only grant access if they have at least one page permission
+        const pages = metadata.notebook_permissions[notebookId];
+        logger.debug('Pages for notebook', { notebookId, pages });
+
+        if (Array.isArray(pages) && pages.length > 0) {
+            logger.debug('Access GRANTED via notebook_permissions');
             return true;
+        } else {
+            logger.debug('Pages array empty or not array');
         }
     }
 
     // 2. Fallback to Legacy Array
     const allowedNotebooks = metadata?.allowed_notebooks || [];
-    return Array.isArray(allowedNotebooks) && allowedNotebooks.includes(notebookId);
+    logger.debug('Checking legacy allowed_notebooks', { allowedNotebooks });
+
+    const hasLegacyAccess = Array.isArray(allowedNotebooks) && allowedNotebooks.includes(notebookId);
+    logger.debug('Notebook permission decision', { decision: hasLegacyAccess ? 'GRANTED' : 'DENIED' });
+
+    return hasLegacyAccess;
+};
+
+/**
+ * Checks if the user was created by an admin.
+ * Users created by admins should have restricted permissions for certain destructive operations.
+ * 
+ * @param user The Clerk user object
+ * @returns true if the user was created by an admin, false otherwise
+ */
+export const isCreatedByAdmin = (user: any): boolean => {
+    if (!user) {
+        return false;
+    }
+
+    const metadata = getMetadata(user);
+    // If user doesn't have 'admin' role, they were created by an admin and should be restricted
+    return metadata?.role !== 'admin';
 };

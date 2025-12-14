@@ -41,8 +41,8 @@ const SignInPage: React.FC = () => {
                     <SignIn
                         appearance={clerkAppearance}
                         signUpUrl="/sign-up"
-                        afterSignInUrl="/"
-                        afterSignUpUrl="/"
+                        afterSignInUrl="/dashboard"
+                        afterSignUpUrl="/dashboard"
                     />
                 </div>
             </div>

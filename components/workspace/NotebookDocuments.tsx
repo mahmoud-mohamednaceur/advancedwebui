@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Button from '../ui/Button';
 import type { NotebookConfig } from '../../App';
+import { logger } from '../../utils/logger';
 
 // --- CONSTANTS ---
 // Webhook for listing folders in SharePoint
@@ -293,7 +294,7 @@ const ErrorDetailsModal: React.FC<ErrorDetailsModalProps> = ({ notebookId, doc, 
                     setErrorData(details);
                 }
             } catch (err) {
-                console.error("Failed to fetch error details", err);
+                logger.error("Failed to fetch error details", err);
             } finally {
                 setIsLoading(false);
             }
@@ -466,13 +467,13 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                         try {
                             data.ingestion_settings = JSON.parse(data.ingestion_settings);
                         } catch (e) {
-                            console.warn("Failed to parse ingestion_settings JSON string", e);
+                            logger.warn("Failed to parse ingestion_settings JSON string", e);
                         }
                     }
                     setFetchedData(data);
                 }
             } catch (err) {
-                console.error("Failed to fetch ingestion details", err);
+                logger.error("Failed to fetch ingestion details", err);
             } finally {
                 setIsLoading(false);
             }
@@ -508,7 +509,7 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                     if (stage) setWorkflowStage(String(stage));
                 }
             } catch (e) {
-                console.error("Failed to fetch workflow stage", e);
+                logger.error("Failed to fetch workflow stage", e);
             }
         };
 
@@ -576,7 +577,7 @@ const IngestionDetailsModal: React.FC<IngestionDetailsModalProps> = ({ doc, note
                     setContextualChunks(data);
                 }
             } catch (e) {
-                console.error("Failed to fetch contextual chunks", e);
+                logger.error("Failed to fetch contextual chunks", e);
             } finally {
                 setIsLoadingChunks(false);
             }
@@ -901,11 +902,11 @@ const IngestionModal: React.FC<IngestionModalProps> = ({
 
                 setDiscoveredFiles(files);
             } else {
-                console.error("Discovery failed");
+                logger.error("Discovery failed");
                 alert("Failed to discover files. Please check the backend connection.");
             }
         } catch (e) {
-            console.error("Discovery error", e);
+            logger.error("Discovery error", e);
             alert("Error connecting to SharePoint service.");
         } finally {
             setIsLoading(false);
@@ -1075,7 +1076,7 @@ Output: 2022
                 alert("Ingestion trigger failed.");
             }
         } catch (e) {
-            console.error("Ingestion error", e);
+            logger.error("Ingestion error", e);
             alert("Error starting ingestion.");
         } finally {
             setIsLoading(false);
@@ -1686,7 +1687,7 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                 if (!isBackground) setDocuments([]);
             }
         } catch (error) {
-            console.error("Failed to fetch documents", error);
+            logger.error("Failed to fetch documents", error);
         } finally {
             if (!isBackground) setIsLoading(false);
         }
@@ -1720,8 +1721,7 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
         e.preventDefault();
         e.stopPropagation();
 
-        // Log to verify click is capturing
-        console.log("🗑️ Delete Requested for:", doc.name, doc.id);
+        logger.debug('Delete Requested', { fileName: doc.name, id: doc.id });
 
         setDeletingFileId(doc.id);
 
@@ -1733,7 +1733,7 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                 orchestrator_id: ORCHESTRATOR_ID
             };
 
-            console.log("📤 Sending delete payload:", payload);
+            logger.debug('Sending delete payload', { payload });
 
             const response = await fetch(DELETE_FILE_WEBHOOK_URL, {
                 method: 'POST',
@@ -1744,14 +1744,14 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
             if (response.ok) {
                 // Remove from local state immediately
                 setDocuments(prev => prev.filter(d => d.id !== doc.id));
-                console.log("✅ File deleted successfully");
+                logger.debug('File deleted successfully', { fileName: doc.name });
             } else {
                 const text = await response.text();
-                console.error("Delete failed:", response.status, text);
+                logger.error("Delete failed", { status: response.status, text });
                 alert("Failed to delete file. Server returned an error.");
             }
         } catch (error) {
-            console.error("Delete network error:", error);
+            logger.error("Delete network error", error);
             alert("An error occurred while deleting the file.");
         } finally {
             setDeletingFileId(null);

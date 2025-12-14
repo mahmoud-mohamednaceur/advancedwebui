@@ -21,13 +21,7 @@ const Navbar: React.FC<NavbarProps> = ({ onStart }) => {
 
         {/* Desktop Links */}
         <div className="hidden md:flex items-center gap-8">
-          <div className="flex gap-8">
-            <a href="#workflow" className="text-sm font-medium text-text-subtle hover:text-white transition-colors">Workflow</a>
-            <a href="#solutions" className="text-sm font-medium text-text-subtle hover:text-white transition-colors">Solutions</a>
-          </div>
-          <a href="/sign-up">
-            <Button variant="primary" className="!h-10 !px-5">Get Started</Button>
-          </a>
+          <Button variant="primary" className="!h-10 !px-5" onClick={onStart}>Get Started</Button>
         </div>
 
         {/* Mobile Toggle */}
@@ -38,11 +32,10 @@ const Navbar: React.FC<NavbarProps> = ({ onStart }) => {
         {/* Mobile Menu */}
         {isOpen && (
           <div className="absolute top-full left-0 right-0 mt-2 p-4 bg-surface border border-white/10 rounded-xl shadow-2xl flex flex-col gap-4 md:hidden mx-4">
-            <a href="#workflow" className="text-white p-2" onClick={() => setIsOpen(false)}>Workflow</a>
-            <a href="#solutions" className="text-white p-2" onClick={() => setIsOpen(false)}>Solutions</a>
-            <a href="/sign-up" className="w-full" onClick={() => setIsOpen(false)}>
-              <Button variant="primary" className="w-full">Get Started</Button>
-            </a>
+            <Button variant="primary" className="w-full" onClick={() => {
+              setIsOpen(false);
+              if (onStart) onStart();
+            }}>Get Started</Button>
           </div>
         )}
       </nav>
