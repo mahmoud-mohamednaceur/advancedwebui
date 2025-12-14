@@ -1332,6 +1332,8 @@ Output: 2022
                                         description="Multimodal parsing using Google Gemini Vision capabilities."
                                         selected={parsingMethod === 'gemini_ocr'}
                                         onClick={() => setParsingMethod('gemini_ocr')}
+                                        disabled={true}
+                                        badge="No longer available."
                                     />
                                     <SelectionCard
                                         icon={FileType}
@@ -1339,8 +1341,6 @@ Output: 2022
                                         description="Specialized layout analysis and structure extraction."
                                         selected={parsingMethod === 'docling'}
                                         onClick={() => setParsingMethod('docling')}
-                                        disabled={true}
-                                        badge="Resource heavy. Requires GPU upgrade. Coming soon."
                                     />
                                 </div>
                             </section>

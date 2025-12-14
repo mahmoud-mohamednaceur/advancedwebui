@@ -1,0 +1,3 @@
+        const conns = await execSSHCommand(sshClient,
+            getProjectCommand(`docker exec -i ${pgContainer} bash -c "export PGUSER=postgres && psql -d postgres -t -c \\"SELECT sum(numbackends) FROM pg_stat_database;\\""`))
+        );

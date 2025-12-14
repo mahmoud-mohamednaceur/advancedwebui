@@ -12,13 +12,12 @@ import {
   BarChart2,
   Search,
   MessageSquare,
-  Command
+  Command,
+  Server
 } from 'lucide-react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { isAdmin, hasPagePermission } from '../utils/admin';
-
-export type GlobalPage = 'dashboard' | 'notebooks' | 'settings';
-export type WorkspacePage = 'home' | 'chat' | 'documents' | 'chart' | 'search' | 'settings';
+import { GlobalPage, WorkspacePage } from '../config';
 
 interface SidebarProps {
   mode: 'global' | 'workspace';
@@ -149,6 +148,12 @@ const Sidebar: React.FC<SidebarProps> = ({ mode, activePage, onNavigate, onBackT
                   label="User Management"
                   active={activePage === 'settings'}
                   onClick={() => onNavigate('settings')}
+                />
+                <SidebarItem
+                  icon={Server}
+                  label="Server Monitor"
+                  active={activePage === 'server'}
+                  onClick={() => onNavigate('server')}
                 />
               </>
             )}

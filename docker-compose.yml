@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: advancedwebui
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      # Clerk Authentication
+      - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      # Hetzner Server Configuration
+      - HETZNER_HOST=${HETZNER_HOST}
+      - HETZNER_USER=${HETZNER_USER}
+      - HETZNER_PASSWORD=${HETZNER_PASSWORD}
+      # Gemini API (if needed)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    env_file:
+      - .env.local
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

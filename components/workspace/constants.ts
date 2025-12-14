@@ -14,5 +14,5 @@ export const RETRIEVAL_STRATEGIES: RetrievalStrategyMeta[] = [
     { id: 'semantic-context', name: 'Semantic Context', description: 'Pure semantic search focusing on vector similarity.' },
     { id: 'semantic-rerank', name: 'Semantic-Reranker', description: 'Vector retrieval followed by a cross-encoder reranking step.' },
     { id: 'hybrid-rerank', name: 'Hybrid Rerank', description: 'Standard keyword + vector search with final reranking.' },
-    { id: 'agentic-sql', name: 'Agentic SQL Retrieval', description: 'Autonomous SQL agent for structured database querying.', disabled: true }
+    { id: 'agentic-sql', name: 'Agentic SQL Retrieval', description: 'Autonomous SQL agent for structured database querying.' }
 ];

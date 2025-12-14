@@ -213,8 +213,8 @@ export const ContentCard: React.FC<{ data: DynamicChunk, rank?: number, showScor
 
     return (
         <div className={`group relative flex flex-col rounded-xl border transition-all duration-300 overflow-hidden mb-3 ${expanded ? 'bg-[#121218] border-primary/50 shadow-[0_0_30px_-10px_rgba(126,249,255,0.15)] z-10' :
-                highlight ? 'bg-[#16161D] border-primary/30 shadow-[0_0_20px_-10px_rgba(126,249,255,0.1)]' :
-                    'bg-[#16161D]/80 border-white/5 hover:border-white/10'
+            highlight ? 'bg-[#16161D] border-primary/30 shadow-[0_0_20px_-10px_rgba(126,249,255,0.1)]' :
+                'bg-[#16161D]/80 border-white/5 hover:border-white/10'
             }`}>
             {/* Header */}
             <div className="flex items-start gap-3 p-3 cursor-pointer" onClick={() => setExpanded(!expanded)}>
@@ -522,8 +522,8 @@ const RerankView: React.FC<{ raw: any, type: 'semantic' | 'hybrid' | 'fusion' | 
                         {idx < 3 && (
                             <div className="absolute -left-3 top-4 flex flex-col items-center gap-1 z-10">
                                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border ${idx === 0 ? 'bg-amber-400 text-black border-amber-300' :
-                                        idx === 1 ? 'bg-gray-300 text-black border-gray-200' :
-                                            'bg-amber-700 text-white border-amber-600'
+                                    idx === 1 ? 'bg-gray-300 text-black border-gray-200' :
+                                        'bg-amber-700 text-white border-amber-600'
                                     }`}>
                                     {idx + 1}
                                 </div>
@@ -832,7 +832,8 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                 strategies_config: config.strategies,
                 inference_config: config.inference,
                 system_prompts: config.systemPrompts,
-                embedding_model: config.embeddingModel
+                embedding_model: config.embeddingModel,
+                user_id: user?.id
             };
 
             const retrievalPayload = { question: userMsg.content, ...commonConfig };
@@ -916,7 +917,9 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                     <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                            <span className="text-xs font-bold text-white">RAG Agent Active</span>
+                            <span className="text-xs font-bold text-white">
+                                {config.activeStrategyId === 'agentic-sql' ? 'SQL Agent Active' : 'RAG Agent Active'}
+                            </span>
                         </div>
 
                         {/* Strategy Selector */}
@@ -981,8 +984,8 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
 
                                 <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                                     <div className={`px-6 py-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user'
-                                            ? 'bg-[#1A1A21] border border-white/10 text-white rounded-tr-none'
-                                            : 'bg-surface/80 border border-white/5 text-gray-200 rounded-tl-none backdrop-blur-md'
+                                        ? 'bg-[#1A1A21] border border-white/10 text-white rounded-tr-none'
+                                        : 'bg-surface/80 border border-white/5 text-gray-200 rounded-tl-none backdrop-blur-md'
                                         } ${msg.isError ? 'border-red-500/30 bg-red-500/5 text-red-200' : ''}`}>
                                         {msg.content}
                                     </div>
@@ -993,8 +996,8 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                                             <button
                                                 onClick={() => setActiveMessage(activeMessage?.id === msg.id ? null : msg)}
                                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${activeMessage?.id === msg.id
-                                                        ? 'bg-primary/10 text-primary border-primary/30 shadow-[0_0_10px_rgba(126,249,255,0.2)]'
-                                                        : 'bg-white/5 text-text-subtle border-white/5 hover:border-primary/30 hover:text-primary hover:bg-primary/5'
+                                                    ? 'bg-primary/10 text-primary border-primary/30 shadow-[0_0_10px_rgba(126,249,255,0.2)]'
+                                                    : 'bg-white/5 text-text-subtle border-white/5 hover:border-primary/30 hover:text-primary hover:bg-primary/5'
                                                     }`}
                                             >
                                                 {sourceCount > 0 ? (
