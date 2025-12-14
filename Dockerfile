@@ -3,6 +3,10 @@
 # Stage 1: Build the frontend
 FROM node:20-alpine AS frontend-builder
 
+# Accept build argument for Clerk publishable key
+ARG VITE_CLERK_PUBLISHABLE_KEY
+ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
+
 WORKDIR /app
 
 # Copy package files
