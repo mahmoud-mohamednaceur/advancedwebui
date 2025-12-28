@@ -21,10 +21,12 @@ import PlaygroundSearch from './components/workspace/PlaygroundSearch';
 import NotebookChat from './components/workspace/NotebookChat';
 import NotebookSettings from './components/workspace/NotebookSettings';
 import NotebookEmbeddingSetup from './components/workspace/NotebookEmbeddingSetup';
+import NotebookAIEnhancer from './components/workspace/NotebookAIEnhancer';
+import NotebookMonitor from './components/workspace/NotebookMonitor';
+
 import { Loader2 } from 'lucide-react';
 import { isAdmin, hasNotebookPermission, hasPagePermission } from './utils/admin';
 import GlobalSettings from './components/GlobalSettings';
-import ServerMonitorMain from './components/monitoring/ServerMonitorMain';
 
 type AppMode = 'global' | 'workspace';
 
@@ -278,8 +280,7 @@ const App: React.FC = () => {
             } else if (appMode === 'global') {
                 newPath = activeGlobalPage === 'dashboard' ? '/dashboard' :
                     activeGlobalPage === 'notebooks' ? '/notebooks' :
-                        activeGlobalPage === 'settings' ? '/settings' :
-                            activeGlobalPage === 'server' ? '/server' : '/dashboard';
+                        activeGlobalPage === 'settings' ? '/settings' : '/dashboard';
             } else if (appMode === 'workspace' && selectedNotebookId) {
                 newPath = `/notebook/${selectedNotebookId}/${activeWorkspacePage === 'home' ? '' : activeWorkspacePage}`;
             }
@@ -327,9 +328,6 @@ const App: React.FC = () => {
             } else if (currentPath.startsWith('/settings')) {
                 setAppMode('global');
                 setActiveGlobalPage('settings');
-            } else if (currentPath.startsWith('/server')) {
-                setAppMode('global');
-                setActiveGlobalPage('server');
             }
             // Workspace Routes /notebook/:id/:page?
             else if (currentPath.startsWith('/notebook/')) {
@@ -524,18 +522,7 @@ const App: React.FC = () => {
                                                 </div>
                                             )
                                         )}
-                                        {activeGlobalPage === 'server' && (
-                                            isUserAdmin ? (
-                                                <ServerMonitorMain />
-                                            ) : (
-                                                <div className="flex items-center justify-center h-full text-red-400 animate-fade-in-up">
-                                                    <div className="text-center p-8 border border-dashed border-red-500/20 rounded-2xl bg-red-500/5">
-                                                        <p>Access Denied</p>
-                                                        <span className="text-xs opacity-50">Admin privileges required</span>
-                                                    </div>
-                                                </div>
-                                            )
-                                        )}
+
                                     </>
                                 )}
 
@@ -609,6 +596,21 @@ const App: React.FC = () => {
                                                 </div>
                                             )
                                         )}
+                                        {activeWorkspacePage === 'ai-enhancer' && (
+                                            <NotebookAIEnhancer
+                                                notebookId={selectedNotebookId}
+                                                notebookName={selectedNotebookName}
+                                                config={currentConfig}
+                                            />
+                                        )}
+                                        {activeWorkspacePage === 'monitor' && (
+                                            <NotebookMonitor
+                                                notebookId={selectedNotebookId}
+                                                notebookName={selectedNotebookName}
+                                                config={currentConfig}
+                                            />
+                                        )}
+
                                     </>
                                 )}
                             </main>

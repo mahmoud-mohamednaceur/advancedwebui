@@ -5,8 +5,8 @@ export interface StrategyConfig {
   params: Record<string, number>;
 }
 
-export type GlobalPage = 'dashboard' | 'notebooks' | 'settings' | 'server';
-export type WorkspacePage = 'home' | 'chat' | 'documents' | 'chart' | 'search' | 'settings';
+export type GlobalPage = 'dashboard' | 'notebooks' | 'settings';
+export type WorkspacePage = 'home' | 'chat' | 'documents' | 'chart' | 'search' | 'settings' | 'ai-enhancer' | 'monitor';
 
 export interface NotebookConfig {
   embeddingModel: string;

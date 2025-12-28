@@ -1,0 +1,99 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "content": "## Simple Notebook Monitor\n\nSingle endpoint that returns ALL essential metrics:\n- Total files, chunks, duplicates\n- File list with status\n- Structured vs unstructured counts\n\n**Request:**\n```json\n{ \"notebook_id\": \"uuid\" }\n```",
+                "height": 400,
+                "width": 600
+            },
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                -800,
+                1800
+            ],
+            "id": "sticky-note",
+            "name": "Info"
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                200,
+                2000
+            ],
+            "id": "respond-monitor",
+            "name": "Respond"
+        },
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "36907c26-cd49-4578-abe2-2e5d5933a687-notebook-monitor",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2.1,
+            "position": [
+                -500,
+                2000
+            ],
+            "id": "webhook-monitor",
+            "name": "Notebook Monitor",
+            "webhookId": "36907c26-cd49-4578-abe2-2e5d5933a687"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "-- SIMPLE NOTEBOOK MONITOR\n-- Returns all essential metrics for a specific notebook\n\nWITH \n-- Basic notebook info\nnotebook_info AS (\n    SELECT \n        notebook_id,\n        notebook_title,\n        created_at,\n        updated_at\n    FROM notebook \n    WHERE notebook_id = '{{ $json.body.notebook_id }}'::uuid\n),\n\n-- File counts from document_records\nfile_stats AS (\n    SELECT \n        COUNT(*) AS total_files,\n        COUNT(*) FILTER (WHERE document_type = 'tabular') AS structured_files,\n        COUNT(*) FILTER (WHERE document_type = 'non_tabular') AS unstructured_files\n    FROM document_records\n    WHERE notebook_id = '{{ $json.body.notebook_id }}'::uuid\n),\n\n-- Chunk counts\nchunk_stats AS (\n    SELECT \n        COUNT(*) AS total_chunks,\n        COUNT(*) FILTER (WHERE status = 'completed') AS completed_chunks,\n        COUNT(*) FILTER (WHERE status = 'pending') AS pending_chunks,\n        COUNT(*) FILTER (WHERE status = 'failed') AS failed_chunks\n    FROM contextual_retrieval_table\n    WHERE notebook_id = '{{ $json.body.notebook_id }}'::uuid\n),\n\n-- Duplicate count (number of duplicate GROUPS, not individual chunks)\nduplicate_stats AS (\n    SELECT COUNT(*) AS duplicate_groups\n    FROM (\n        SELECT original_chunk\n        FROM contextual_retrieval_table\n        WHERE notebook_id = '{{ $json.body.notebook_id }}'::uuid\n          AND original_chunk IS NOT NULL\n          AND LENGTH(TRIM(original_chunk)) > 10\n        GROUP BY original_chunk\n        HAVING COUNT(*) > 1\n    ) dups\n),\n\n-- Vector store count\nvector_stats AS (\n    SELECT COUNT(*) AS total_vectors\n    FROM documents\n    WHERE metadata->>'notebook_id' = '{{ $json.body.notebook_id }}'\n),\n\n-- File list with status\nfile_list AS (\n    SELECT json_agg(\n        json_build_object(\n            'file_id', file_id,\n            'file_name', file_name,\n            'file_type', document_type,\n            'chunks', chunk_count,\n            'status', status\n        ) ORDER BY file_name\n    ) AS files\n    FROM (\n        SELECT \n            dr.file_id,\n            dr.file_name,\n            dr.document_type,\n            COALESCE(c.chunk_count, 0) AS chunk_count,\n            CASE \n                WHEN COALESCE(c.failed_count, 0) > 0 THEN 'failed'\n                WHEN COALESCE(c.pending_count, 0) > 0 THEN 'processing'\n                WHEN COALESCE(c.chunk_count, 0) = 0 THEN 'no_chunks'\n                ELSE 'ready'\n            END AS status\n        FROM document_records dr\n        LEFT JOIN (\n            SELECT \n                file_id,\n                COUNT(*) AS chunk_count,\n                COUNT(*) FILTER (WHERE status = 'pending') AS pending_count,\n                COUNT(*) FILTER (WHERE status = 'failed') AS failed_count\n            FROM contextual_retrieval_table\n            WHERE notebook_id = '{{ $json.body.notebook_id }}'::uuid\n            GROUP BY file_id\n        ) c ON dr.file_id = c.file_id\n        WHERE dr.notebook_id = '{{ $json.body.notebook_id }}'::uuid\n    ) files_with_status\n)\n\nSELECT \n    ni.notebook_id,\n    ni.notebook_title,\n    ni.created_at,\n    ni.updated_at,\n    \n    -- File metrics\n    COALESCE(fs.total_files, 0) AS total_files,\n    COALESCE(fs.structured_files, 0) AS structured_files,\n    COALESCE(fs.unstructured_files, 0) AS unstructured_files,\n    \n    -- Chunk metrics\n    COALESCE(cs.total_chunks, 0) AS total_chunks,\n    COALESCE(cs.completed_chunks, 0) AS completed_chunks,\n    COALESCE(cs.pending_chunks, 0) AS pending_chunks,\n    COALESCE(cs.failed_chunks, 0) AS failed_chunks,\n    \n    -- Duplicate count\n    COALESCE(ds.duplicate_groups, 0) AS duplicate_count,\n    \n    -- Vector count\n    COALESCE(vs.total_vectors, 0) AS total_vectors,\n    \n    -- Overall status\n    CASE \n        WHEN COALESCE(cs.failed_chunks, 0) > 0 THEN 'has_errors'\n        WHEN COALESCE(cs.pending_chunks, 0) > 0 THEN 'processing'\n        WHEN COALESCE(cs.total_chunks, 0) = 0 THEN 'empty'\n        ELSE 'ready'\n    END AS notebook_status,\n    \n    -- File list\n    COALESCE(fl.files, '[]'::json) AS files\n\nFROM notebook_info ni\nCROSS JOIN file_stats fs\nCROSS JOIN chunk_stats cs\nCROSS JOIN duplicate_stats ds\nCROSS JOIN vector_stats vs\nCROSS JOIN file_list fl;",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                -150,
+                2000
+            ],
+            "id": "query-monitor",
+            "name": "Query Monitor",
+            "alwaysOutputData": true,
+            "credentials": {
+                "postgres": {
+                    "id": "BkpXZhgdJu6BdpjK",
+                    "name": "Local Postgres"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Notebook Monitor": {
+            "main": [
+                [
+                    {
+                        "node": "Query Monitor",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Query Monitor": {
+            "main": [
+                [
+                    {
+                        "node": "Respond",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "meta": {
+        "instanceId": "764abf43019c66c51279befb0403092fc7e1beab1eff90fa2cd5f93d91d18c8a"
+    }
+}

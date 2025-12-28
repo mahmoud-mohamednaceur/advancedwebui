@@ -31,11 +31,101 @@ const CONTEXTUAL_RETRIEVAL_STATE_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/w
 const WORKFLOW_STAGE_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/22e943ae-6bc7-43b3-9ca4-16bdc715a84b-get-workflow-stage';
 // Webhook for file error details
 const ERROR_DETAILS_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/22e943ae-6bc7-43b3-9ca4-16bdc715a84b-files-error-and-details';
+// Webhook for marking documents as error after timeout
+const MARK_AS_ERROR_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/69973aa3-87db-4f6b-b366-e69e247e638c-mark-document-as-error';
+// Webhook for re-ingesting failed documents
+const REINGEST_DOCUMENT_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/b65632eb-86bc-4cf6-8586-5980beaa3282-share-point-files-reingestion';
+
+// Default re-ingestion configuration
+const REINGESTION_DEFAULTS = {
+    retry_count: 0,
+    inference_provider: 'openai',
+    inference_model: 'gpt-4o-mini',
+    inference_temperature: 0,
+    ingestion_method: 'SharePoint',
+    config_parser_mode: 'Basic Extractor',
+    config_chunking_mode: 'Agentic Chunking',
+    config_destination: 'PostgreSQL (pgvector)',
+    config_enable_context_augmentation: true,
+    recursive_chunk_size: 600,
+    recursive_chunk_overlap: 200,
+    agentic_instructions: `<role>You are a document segmentation expert. Your task is to identify the optimal transition point where one topic ends and another begins.</role>
+
+<objective>Find a natural breakpoint that keeps semantically related content together. Split only where topics genuinely transition—not arbitrarily.</objective>
+
+<constraint>The split MUST occur BEFORE character position \${maxChunkSize}.</constraint>
+
+<indicators>Evaluate these signals (from strongest to weakest):
+1. Section headings or explicit topic markers
+2. Paragraph boundaries with clear shifts in subject
+3. Completed arguments before new ideas begin
+4. Thematic transitions between distinct concepts
+</indicators>
+
+<rules>
+- Preserve semantic coherence—never split mid-thought
+- Choose the LAST strong transition point within the limit
+- Prioritize meaning over proximity to the character limit
+</rules>
+
+<output_format>
+Return ONLY the final word appearing immediately before your chosen split.
+No explanations, no punctuation—just the single word.
+
+Example:
+If the text ends with: "The company was founded in 2022."
+Output: 2022
+</output_format>`,
+    agentic_min_size: 300,
+    agentic_max_size: 800,
+    agentic_model: 'gpt-4o-mini',
+    batch_size: '1',
+    ctx_batch_size: '10'
+};
+
+// Timeout threshold for marking documents as error (5 minutes)
+const DOCUMENT_TIMEOUT_MS = 10 * 60 * 1000; // 5 minutes
 
 const ORCHESTRATOR_ID = '301f7482-1430-466d-9721-396564618751';
 
 // Types
 type Status = 'success' | 'processing' | 'pending' | 'error';
+
+// Helper function to extract file type from filename
+const getFileTypeFromName = (fileName: string): string => {
+    if (!fileName) return 'unknown';
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    const mimeTypes: Record<string, string> = {
+        'pdf': 'application/pdf',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'txt': 'text/plain',
+        'csv': 'text/csv',
+        'json': 'application/json',
+        'xml': 'application/xml',
+        'html': 'text/html',
+        'htm': 'text/html',
+        'md': 'text/markdown',
+        'rtf': 'application/rtf',
+        'odt': 'application/vnd.oasis.opendocument.text',
+        'ods': 'application/vnd.oasis.opendocument.spreadsheet',
+        'odp': 'application/vnd.oasis.opendocument.presentation',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'bmp': 'image/bmp',
+        'svg': 'image/svg+xml',
+        'webp': 'image/webp',
+        'tiff': 'image/tiff',
+        'tif': 'image/tiff'
+    };
+    return extension ? (mimeTypes[extension] || `application/${extension}`) : 'unknown';
+};
 
 interface IngestionConfig {
     method?: string;
@@ -45,12 +135,23 @@ interface IngestionConfig {
     overlap?: number;
     augmentation?: boolean;
     destination?: string;
+    // Extended configuration fields for re-ingestion
+    inferenceProvider?: string;
+    inferenceModel?: string;
+    inferenceTemperature?: number;
+    agenticInstructions?: string;
+    agenticMinSize?: number;
+    agenticMaxSize?: number;
+    agenticModel?: string;
+    batchSize?: string;
+    ctxBatchSize?: string;
 }
 
 interface Document {
     id: string; // job_id
     jobId?: string; // job_id (original source id)
     fileId?: string; // file_id
+    notebookId?: string; // notebook_id - the document's original notebook
     name: string; // file_name
     type: string;
     status: 'completed' | 'processing' | 'pending' | 'error';
@@ -60,6 +161,14 @@ interface Document {
     error?: string; // error_description
     retryCount?: number; // retry_count
     ingestionConfig?: IngestionConfig;
+    // Re-ingestion fields
+    orchestratorId?: string;
+    filePath?: string;
+    fileUrl?: string;
+    trackedFolderId?: string;
+    sharepointFolderId?: string;
+    notebookTitle?: string;
+    notebookDescription?: string;
 }
 
 interface SharePointFile {
@@ -1600,6 +1709,7 @@ interface NotebookDocumentsProps {
 }
 
 const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, notebookName, notebookDescription, config }) => {
+    const { user } = useUser();
     const [documents, setDocuments] = useState<Document[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -1608,6 +1718,16 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
     const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
     const [selectedDetailDoc, setSelectedDetailDoc] = useState<Document | null>(null);
     const [selectedErrorDoc, setSelectedErrorDoc] = useState<Document | null>(null);
+    // Track documents already marked as timed out to prevent duplicate webhook calls
+    const [timedOutDocIds, setTimedOutDocIds] = useState<Set<string>>(new Set());
+    // Track re-ingesting documents
+    const [reingestingDocId, setReingestingDocId] = useState<string | null>(null);
+    // Track selected documents for batch operations
+    const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+    // Track batch re-ingestion in progress
+    const [isBatchReingesting, setIsBatchReingesting] = useState(false);
+    // Track batch delete in progress
+    const [isBatchDeleting, setIsBatchDeleting] = useState(false);
 
     const fetchDocuments = async (isBackground = false) => {
         if (!isBackground) setIsLoading(true);
@@ -1655,8 +1775,10 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                             id: doc.job_id || doc.file_id || doc.id || Math.random().toString(36),
                             jobId: doc.job_id || doc.jobId,
                             fileId: doc.file_id || doc.fileId,
+                            notebookId: doc.notebook_id || doc.notebookId, // Capture the document's original notebook_id
                             name: doc.file_name || doc.name || doc.notebook_title || 'Untitled Document',
-                            type: 'text',
+                            // Use file_type from API, or extract from filename
+                            type: doc.file_type || doc.type || doc.mimeType || getFileTypeFromName(doc.file_name || doc.name || ''),
                             status: status,
                             size: 'Unknown',
                             added: doc.created_at || new Date().toISOString(),
@@ -1665,13 +1787,31 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                             retryCount: doc.retry_count,
                             ingestionConfig: {
                                 method: doc.ingestion_method || 'Unknown',
-                                parser: doc.config_parser_mode || 'Standard',
-                                chunking: doc.config_chunking_mode || 'Recursive',
-                                chunkSize: doc.recursive_chunk_size,
-                                overlap: doc.recursive_chunk_overlap,
-                                augmentation: doc.config_enable_context_augmentation,
-                                destination: doc.config_destination || 'PostgreSQL'
-                            }
+                                parser: doc.config_parser_mode || doc.config_parse_mode || 'Standard',
+                                chunking: doc.config_chunking_mode || doc.config_chunk_mode || 'Recursive',
+                                chunkSize: doc.recursive_chunk_size || doc.recursiv_chunk_size,
+                                overlap: doc.recursive_chunk_overlap || doc.recursiv_chunk_overlap,
+                                augmentation: doc.config_enable_context_augmentation ?? doc.contextual_retrieval,
+                                destination: doc.config_destination || 'PostgreSQL',
+                                // Extended fields for accurate re-ingestion
+                                inferenceProvider: doc.inference_provider,
+                                inferenceModel: doc.inference_model,
+                                inferenceTemperature: doc.inference_temperature,
+                                agenticInstructions: doc.agentic_instructions,
+                                agenticMinSize: doc.agentic_min_size,
+                                agenticMaxSize: doc.agentic_max_size,
+                                agenticModel: doc.agentic_model,
+                                batchSize: doc.batch_processing_size || doc['Batch Size'],
+                                ctxBatchSize: doc.contextual_batch_processing_size || doc['Ctx. Batch Size']
+                            },
+                            // Re-ingestion fields
+                            orchestratorId: doc.orchestrator_id || doc.orchestratorId,
+                            filePath: doc.file_path || doc.filePath,
+                            fileUrl: doc.file_url || doc.fileUrl,
+                            trackedFolderId: doc.tracked_folder_id || doc.trackedFolderId || doc['Tracked Folder ID'],
+                            sharepointFolderId: doc.sharepoint_folder_id || doc.sharepointFolderId,
+                            notebookTitle: doc.notebook_title || doc.notebookTitle,
+                            notebookDescription: doc.notebook_description || doc.notebookDescription || ''
                         };
                     });
 
@@ -1699,17 +1839,361 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
         }
     }, [notebookId]);
 
+    // Helper function to build a complete reingest payload for a document
+    const buildReingestPayload = async (doc: Document): Promise<any> => {
+        // Fetch the ORIGINAL ingestion settings from the database
+        let originalSettings: any = {};
+
+        try {
+            const settingsResponse = await fetch(INGESTION_SETTINGS_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    notebook_id: notebookId,
+                    file_id: doc.fileId || doc.id,
+                    job_id: doc.jobId || doc.id,
+                    user_id: user?.id
+                })
+            });
+
+            if (settingsResponse.ok) {
+                const res = await settingsResponse.json();
+                let data = Array.isArray(res) ? res[0] : res;
+                if (data?.json) data = data.json;
+
+                // Parse ingestion_settings if it's a JSON string
+                if (data?.ingestion_settings && typeof data.ingestion_settings === 'string') {
+                    try {
+                        originalSettings = JSON.parse(data.ingestion_settings);
+                    } catch (e) {
+                        originalSettings = {};
+                    }
+                } else if (data?.ingestion_settings) {
+                    originalSettings = data.ingestion_settings;
+                }
+
+                // Merge all top-level fields from the response
+                originalSettings = {
+                    ...originalSettings,
+                    ingestion_method: data.ingestion_method || originalSettings.ingestion_method,
+                    config_parser_mode: data.config_parser_mode || data.config_parse_mode || originalSettings.config_parser_mode || originalSettings.config_parse_mode,
+                    config_chunking_mode: data.config_chunking_mode || data.config_chunk_mode || originalSettings.config_chunking_mode || originalSettings.config_chunk_mode,
+                    config_destination: data.config_destination || originalSettings.config_destination,
+                    config_enable_context_augmentation: data.config_enable_context_augmentation ?? data.contextual_retrieval ?? originalSettings.config_enable_context_augmentation ?? originalSettings.contextual_retrieval,
+                    recursive_chunk_size: data.recursive_chunk_size || data.recursiv_chunk_size || originalSettings.recursive_chunk_size || originalSettings.recursiv_chunk_size,
+                    recursive_chunk_overlap: data.recursive_chunk_overlap || data.recursiv_chunk_overlap || originalSettings.recursive_chunk_overlap || originalSettings.recursiv_chunk_overlap,
+                    inference_provider: data.inference_provider || originalSettings.inference_provider,
+                    inference_model: data.inference_model || originalSettings.inference_model,
+                    inference_temperature: data.inference_temperature ?? originalSettings.inference_temperature,
+                    agentic_instructions: data.agentic_instructions || originalSettings.agentic_instructions,
+                    agentic_min_size: data.agentic_min_size || originalSettings.agentic_min_size,
+                    agentic_max_size: data.agentic_max_size || originalSettings.agentic_max_size,
+                    agentic_model: data.agentic_model || originalSettings.agentic_model,
+                    batch_processing_size: data.batch_processing_size || data['Batch Size'] || originalSettings.batch_processing_size || originalSettings['Batch Size'],
+                    contextual_batch_processing_size: data.contextual_batch_processing_size || data['Ctx. Batch Size'] || originalSettings.contextual_batch_processing_size || originalSettings['Ctx. Batch Size'],
+                    file_type: data.file_type || originalSettings.file_type,
+                    file_path: data.file_path || originalSettings.file_path,
+                    file_url: data.file_url || originalSettings.file_url,
+                    tracked_folder_id: data.tracked_folder_id || data['Tracked Folder ID'] || data.trackedFolderId || originalSettings.tracked_folder_id || originalSettings['Tracked Folder ID'],
+                    sharepoint_folder_id: data.sharepoint_folder_id || data['SharePoint Folder ID'] || data.sharepointFolderId || data.folder_id || data.source_folder_id || originalSettings.sharepoint_folder_id || originalSettings['SharePoint Folder ID'] || originalSettings.folder_id,
+                    orchestrator_id: data.orchestrator_id || originalSettings.orchestrator_id,
+                    notebook_id: data.notebook_id || originalSettings.notebook_id
+                };
+            }
+        } catch (e) {
+            logger.warn('Failed to fetch original settings for document', { docId: doc.id });
+        }
+
+        // Build the complete payload
+        return {
+            // Core identifiers
+            notebook_id: doc.notebookId || originalSettings.notebook_id || notebookId,
+            user_id: user?.id,
+            job_id: doc.jobId || doc.id,
+            orchestrator_id: originalSettings.orchestrator_id || doc.orchestratorId || ORCHESTRATOR_ID,
+            retry_count: (doc.retryCount || 0) + 1,
+
+            // File information
+            file_id: doc.fileId || doc.id,
+            file_name: doc.name,
+            file_type: originalSettings.file_type || doc.type || getFileTypeFromName(doc.name),
+            file_path: originalSettings.file_path || doc.filePath || '/drive/root:/Documents',
+            file_url: originalSettings.file_url || doc.fileUrl || '',
+
+            // SharePoint/Folder tracking
+            'Tracked Folder ID': originalSettings.tracked_folder_id || doc.trackedFolderId || doc.fileId || '',
+            sharepoint_folder_id: originalSettings.sharepoint_folder_id || originalSettings.folder_id || originalSettings.tracked_folder_id || doc.sharepointFolderId || doc.trackedFolderId || doc.fileId || '',
+
+            // Notebook metadata
+            notebook_title: doc.notebookTitle || notebookName,
+            notebook_description: doc.notebookDescription || notebookDescription || '',
+
+            // Model configuration
+            embedding_model: config.embeddingModel,
+            inference_provider: originalSettings.inference_provider || REINGESTION_DEFAULTS.inference_provider,
+            inference_model: originalSettings.inference_model || REINGESTION_DEFAULTS.inference_model,
+            inference_temperature: originalSettings.inference_temperature ?? REINGESTION_DEFAULTS.inference_temperature,
+
+            // Ingestion configuration
+            ingestion_method: originalSettings.ingestion_method || REINGESTION_DEFAULTS.ingestion_method,
+            config_parser_mode: originalSettings.config_parser_mode || originalSettings.config_parse_mode || REINGESTION_DEFAULTS.config_parser_mode,
+            config_chunking_mode: originalSettings.config_chunking_mode || originalSettings.config_chunk_mode || REINGESTION_DEFAULTS.config_chunking_mode,
+            config_destination: originalSettings.config_destination || REINGESTION_DEFAULTS.config_destination,
+            config_enable_context_augmentation: originalSettings.config_enable_context_augmentation ?? originalSettings.contextual_retrieval ?? REINGESTION_DEFAULTS.config_enable_context_augmentation,
+
+            // Chunking configuration
+            recursive_chunk_size: originalSettings.recursive_chunk_size || originalSettings.recursiv_chunk_size || REINGESTION_DEFAULTS.recursive_chunk_size,
+            recursive_chunk_overlap: originalSettings.recursive_chunk_overlap || originalSettings.recursiv_chunk_overlap || REINGESTION_DEFAULTS.recursive_chunk_overlap,
+
+            // Agentic configuration
+            agentic_instructions: originalSettings.agentic_instructions || REINGESTION_DEFAULTS.agentic_instructions,
+            agentic_min_size: originalSettings.agentic_min_size || REINGESTION_DEFAULTS.agentic_min_size,
+            agentic_max_size: originalSettings.agentic_max_size || REINGESTION_DEFAULTS.agentic_max_size,
+            agentic_model: originalSettings.agentic_model || REINGESTION_DEFAULTS.agentic_model,
+
+            // Batch processing
+            'Batch Size': originalSettings.batch_processing_size || REINGESTION_DEFAULTS.batch_size,
+            'Ctx. Batch Size': originalSettings.contextual_batch_processing_size || REINGESTION_DEFAULTS.ctx_batch_size,
+
+            // Timestamp
+            timestamp: new Date().toISOString()
+        };
+    };
+
+    // Re-ingest a failed document - uses same structure as batch for consistency
+    const handleReingestDocument = async (doc: Document) => {
+        setReingestingDocId(doc.id);
+
+        try {
+            // Build the file payload using the shared helper function
+            logger.debug('Building reingest payload for document', { fileName: doc.name });
+            const filePayload = await buildReingestPayload(doc);
+
+            // Wrap in same structure as batch re-ingestion
+            const reingestPayload = {
+                action: 'batch_reingest',
+                total_files: 1,
+                files: [filePayload],
+                timestamp: new Date().toISOString()
+            };
+
+            logger.debug('Sending to re-ingestion webhook:', reingestPayload);
+
+            // Send the re-ingestion request
+            const response = await fetch(REINGEST_DOCUMENT_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reingestPayload)
+            });
+
+            if (!response.ok) throw new Error('Failed to trigger re-ingestion');
+
+            logger.info(`Re-ingestion started for "${doc.name}"`);
+
+            // Update local state to show processing
+            setDocuments(prev => prev.map(d =>
+                d.id === doc.id
+                    ? { ...d, status: 'processing' as const, error: undefined }
+                    : d
+            ));
+
+            // Refresh documents after a delay
+            setTimeout(() => {
+                fetchDocuments();
+            }, 5000);
+
+        } catch (error) {
+            logger.error('Error re-ingesting document:', error);
+        } finally {
+            setReingestingDocId(null);
+        }
+    };
+
+    // Toggle selection of a document
+    const toggleDocSelection = (docId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSelectedDocIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(docId)) {
+                newSet.delete(docId);
+            } else {
+                newSet.add(docId);
+            }
+            return newSet;
+        });
+    };
+
+    // Get all error documents that can be re-ingested
+    const getReingestableErrorDocs = () => documents.filter(d => d.status === 'error');
+
+    // Toggle select all error documents
+    const toggleSelectAllErrors = () => {
+        const errorDocs = getReingestableErrorDocs();
+        const allSelected = errorDocs.every(d => selectedDocIds.has(d.id));
+
+        if (allSelected) {
+            // Deselect all
+            setSelectedDocIds(new Set());
+        } else {
+            // Select all error docs
+            setSelectedDocIds(new Set(errorDocs.map(d => d.id)));
+        }
+    };
+
+    // Batch re-ingest selected documents - sends ALL files in ONE request
+    const handleBatchReingest = async () => {
+        const docsToReingest = documents.filter(d => selectedDocIds.has(d.id) && d.status === 'error');
+
+        if (docsToReingest.length === 0) {
+            alert('Please select error documents to re-ingest.');
+            return;
+        }
+
+        setIsBatchReingesting(true);
+
+        try {
+            // Build payload for each document using the shared helper
+            logger.debug('Building payloads for batch re-ingestion', { count: docsToReingest.length });
+            const filesPayloads = await Promise.all(
+                docsToReingest.map(doc => buildReingestPayload(doc))
+            );
+
+            // Send ALL files in ONE request
+            const batchPayload = {
+                action: 'batch_reingest',
+                total_files: filesPayloads.length,
+                files: filesPayloads,
+                timestamp: new Date().toISOString()
+            };
+
+            logger.debug('Sending batch re-ingestion request:', { totalFiles: filesPayloads.length });
+
+            const response = await fetch(REINGEST_DOCUMENT_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(batchPayload)
+            });
+
+            if (!response.ok) throw new Error('Batch re-ingestion failed');
+
+            logger.info(`Batch re-ingestion started for ${filesPayloads.length} files`);
+
+            // Update local state to show processing
+            setDocuments(prev => prev.map(d =>
+                selectedDocIds.has(d.id) && d.status === 'error'
+                    ? { ...d, status: 'processing' as const, error: undefined }
+                    : d
+            ));
+
+            // Clear selection after successful batch operation
+            setSelectedDocIds(new Set());
+
+            // Refresh documents
+            setTimeout(() => {
+                fetchDocuments();
+            }, 5000);
+
+        } catch (error) {
+            logger.error('Error in batch re-ingest:', error);
+            alert('Failed to start batch re-ingestion. Please try again.');
+        } finally {
+            setIsBatchReingesting(false);
+        }
+    };
+
+    // Mark a document as error after timeout
+    const markDocumentAsError = async (doc: Document) => {
+        const docId = doc.id;
+
+        // Prevent duplicate calls
+        if (timedOutDocIds.has(docId)) return;
+        setTimedOutDocIds(prev => new Set(prev).add(docId));
+
+        logger.debug('Marking document as error due to timeout', { docId, fileName: doc.name });
+
+        try {
+            const payload = {
+                file_id: doc.fileId || doc.id,
+                file_name: doc.name,
+                file_type: doc.type || 'document',
+                file_url: 'N/A',
+                body: {
+                    notebook_tilte: notebookName,
+                    Task_id: doc.jobId || doc.id,
+                    orchestrator_id: notebookId
+                }
+            };
+
+            const response = await fetch(MARK_AS_ERROR_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                logger.debug('Document marked as error successfully', { docId });
+                // Update local state to reflect error status
+                setDocuments(prev => prev.map(d =>
+                    d.id === docId
+                        ? { ...d, status: 'error' as const, error: 'Document processing timed out after 10 minutes' }
+                        : d
+                ));
+            } else {
+                logger.error('Failed to mark document as error', { status: response.status });
+                // Remove from timed out set so it can be retried
+                setTimedOutDocIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(docId);
+                    return next;
+                });
+            }
+        } catch (error) {
+            logger.error('Error marking document as error', error);
+            // Remove from timed out set so it can be retried
+            setTimedOutDocIds(prev => {
+                const next = new Set(prev);
+                next.delete(docId);
+                return next;
+            });
+        }
+    };
+
     // Poll for updates if there are active jobs (pending/processing)
     useEffect(() => {
         const hasActiveJobs = documents.some(d => d.status === 'pending' || d.status === 'processing');
         if (!hasActiveJobs) return;
 
+        // Check for timed out documents
+        const checkTimeouts = () => {
+            const now = Date.now();
+            documents.forEach(doc => {
+                if ((doc.status === 'pending' || doc.status === 'processing') && doc.added) {
+                    const createdAt = new Date(doc.added).getTime();
+                    const elapsedMs = now - createdAt;
+
+                    if (elapsedMs > DOCUMENT_TIMEOUT_MS && !timedOutDocIds.has(doc.id)) {
+                        logger.debug('Document timeout detected', {
+                            docId: doc.id,
+                            fileName: doc.name,
+                            elapsedMs,
+                            thresholdMs: DOCUMENT_TIMEOUT_MS
+                        });
+                        markDocumentAsError(doc);
+                    }
+                }
+            });
+        };
+
+        // Check immediately on mount and every polling interval
+        checkTimeouts();
+
         const interval = setInterval(() => {
             fetchDocuments(true);
+            checkTimeouts();
         }, 3000);
 
         return () => clearInterval(interval);
-    }, [documents]);
+    }, [documents, timedOutDocIds]);
 
     const handleIngestionStarted = () => {
         setIsLoading(true);
@@ -1717,6 +2201,7 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
         setTimeout(() => fetchDocuments(), 1000);
     };
 
+    // Delete a single file - uses same structure as batch for consistency
     const handleDeleteFile = async (doc: Document, e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1726,11 +2211,18 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
         setDeletingFileId(doc.id);
 
         try {
+            // Use same structure as batch delete
             const payload = {
+                action: 'batch_delete',
+                total_files: 1,
                 notebook_id: notebookId,
-                file_id: doc.fileId || doc.id,
-                job_id: doc.jobId || doc.id,
-                orchestrator_id: ORCHESTRATOR_ID
+                orchestrator_id: ORCHESTRATOR_ID,
+                files: [{
+                    file_id: doc.fileId || doc.id,
+                    job_id: doc.jobId || doc.id,
+                    file_name: doc.name
+                }],
+                timestamp: new Date().toISOString()
             };
 
             logger.debug('Sending delete payload', { payload });
@@ -1744,6 +2236,12 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
             if (response.ok) {
                 // Remove from local state immediately
                 setDocuments(prev => prev.filter(d => d.id !== doc.id));
+                // Also remove from selection if selected
+                setSelectedDocIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(doc.id);
+                    return newSet;
+                });
                 logger.debug('File deleted successfully', { fileName: doc.name });
             } else {
                 const text = await response.text();
@@ -1755,6 +2253,76 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
             alert("An error occurred while deleting the file.");
         } finally {
             setDeletingFileId(null);
+        }
+    };
+
+    // Toggle select all documents (for batch operations)
+    const toggleSelectAllDocs = () => {
+        if (selectedDocIds.size === documents.length) {
+            // Deselect all
+            setSelectedDocIds(new Set());
+        } else {
+            // Select all
+            setSelectedDocIds(new Set(documents.map(d => d.id)));
+        }
+    };
+
+    // Batch delete selected documents - sends ALL files in ONE request
+    const handleBatchDelete = async () => {
+        const docsToDelete = documents.filter(d => selectedDocIds.has(d.id));
+
+        if (docsToDelete.length === 0) {
+            alert('Please select documents to delete.');
+            return;
+        }
+
+        // Confirm deletion
+        const confirmed = window.confirm(`Are you sure you want to delete ${docsToDelete.length} file(s)? This action cannot be undone.`);
+        if (!confirmed) return;
+
+        setIsBatchDeleting(true);
+
+        try {
+            // Build files array for batch delete
+            const filesPayload = docsToDelete.map(doc => ({
+                file_id: doc.fileId || doc.id,
+                job_id: doc.jobId || doc.id,
+                file_name: doc.name
+            }));
+
+            // Send ALL files in ONE request
+            const payload = {
+                action: 'batch_delete',
+                total_files: filesPayload.length,
+                notebook_id: notebookId,
+                orchestrator_id: ORCHESTRATOR_ID,
+                files: filesPayload,
+                timestamp: new Date().toISOString()
+            };
+
+            logger.debug('Sending batch delete request:', { totalFiles: filesPayload.length });
+
+            const response = await fetch(DELETE_FILE_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error('Batch delete failed');
+
+            logger.info(`Batch delete completed for ${filesPayload.length} files`);
+
+            // Remove deleted docs from local state
+            setDocuments(prev => prev.filter(d => !selectedDocIds.has(d.id)));
+
+            // Clear selection
+            setSelectedDocIds(new Set());
+
+        } catch (error) {
+            logger.error('Error in batch delete:', error);
+            alert('Failed to delete files. Please try again.');
+        } finally {
+            setIsBatchDeleting(false);
         }
     };
 
@@ -1799,6 +2367,37 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                 </div>
 
                 <div className="flex gap-3">
+                    {/* Re-ingest batch controls - show only if there are error documents */}
+                    {getReingestableErrorDocs().length > 0 && (
+                        <>
+                            <Button
+                                variant="outline"
+                                onClick={toggleSelectAllErrors}
+                                className="!h-10 border-orange-500/30 hover:bg-orange-500/10 text-orange-400 hover:text-orange-300"
+                                disabled={isBatchReingesting}
+                            >
+                                {selectedDocIds.size > 0 && selectedDocIds.size === getReingestableErrorDocs().length ? (
+                                    <><CheckSquare className="w-4 h-4 mr-2" /> Deselect All</>
+                                ) : (
+                                    <><Square className="w-4 h-4 mr-2" /> Select All Errors ({getReingestableErrorDocs().length})</>
+                                )}
+                            </Button>
+                            {selectedDocIds.size > 0 && (
+                                <Button
+                                    variant="outline"
+                                    onClick={handleBatchReingest}
+                                    disabled={isBatchReingesting}
+                                    className="!h-10 border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 hover:text-orange-300"
+                                >
+                                    {isBatchReingesting ? (
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Re-ingesting...</>
+                                    ) : (
+                                        <><RefreshCw className="w-4 h-4 mr-2" /> Re-ingest Selected ({selectedDocIds.size})</>
+                                    )}
+                                </Button>
+                            )}
+                        </>
+                    )}
                     <Button variant="outline" onClick={() => fetchDocuments(false)} className="!h-10 border-white/10 hover:bg-white/5 text-text-subtle">
                         <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                     </Button>
@@ -1814,15 +2413,66 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
 
             {/* Toolbar */}
             <div className="px-8 py-4 border-b border-white/5 bg-surface/30 flex justify-between items-center z-10">
-                <div className="relative group w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-subtle group-focus-within:text-white transition-colors" />
-                    <input
-                        type="text"
-                        placeholder="Search files..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-[#0A0A0F] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary/50 transition-colors"
-                    />
+                <div className="flex items-center gap-4">
+                    <div className="relative group w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-subtle group-focus-within:text-white transition-colors" />
+                        <input
+                            type="text"
+                            placeholder="Search files..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-[#0A0A0F] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary/50 transition-colors"
+                        />
+                    </div>
+
+                    {/* Batch selection and delete controls */}
+                    {documents.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={toggleSelectAllDocs}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all border ${selectedDocIds.size === documents.length
+                                    ? 'border-primary/50 bg-primary/10 text-primary'
+                                    : 'border-white/10 hover:border-white/20 text-text-subtle hover:text-white'
+                                    }`}
+                                disabled={isBatchDeleting || isBatchReingesting}
+                            >
+                                {selectedDocIds.size === documents.length ? (
+                                    <CheckSquare className="w-4 h-4" />
+                                ) : selectedDocIds.size > 0 ? (
+                                    <div className="w-4 h-4 border-2 border-current rounded flex items-center justify-center">
+                                        <div className="w-2 h-2 bg-current rounded-sm"></div>
+                                    </div>
+                                ) : (
+                                    <Square className="w-4 h-4" />
+                                )}
+                                <span>
+                                    {selectedDocIds.size > 0
+                                        ? `${selectedDocIds.size} selected`
+                                        : 'Select All'}
+                                </span>
+                            </button>
+
+                            {selectedDocIds.size > 0 && (
+                                <button
+                                    onClick={handleBatchDelete}
+                                    disabled={isBatchDeleting}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 disabled:opacity-50"
+                                >
+                                    {isBatchDeleting ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <span>Deleting...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Trash2 className="w-4 h-4" />
+                                            <span>Delete ({selectedDocIds.size})</span>
+                                        </>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex bg-[#0A0A0F] rounded-lg p-1 border border-white/10">
@@ -1863,7 +2513,18 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                                 className="group relative flex items-center justify-between p-4 rounded-xl bg-[#0E0E12] border border-white/5 hover:border-white/10 hover:bg-[#121216] transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
                             >
                                 <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20">
+                                    {/* Selection checkbox for all documents */}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => toggleDocSelection(doc.id, e)}
+                                        className={`p-1 rounded transition-colors ${selectedDocIds.has(doc.id)
+                                            ? doc.status === 'error' ? 'text-orange-400' : 'text-primary'
+                                            : 'text-text-subtle hover:text-primary'
+                                            }`}
+                                    >
+                                        {selectedDocIds.has(doc.id) ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                                    </button>
+                                    <div className={`w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20 ${doc.status === 'error' ? 'border-red-500/20 text-red-400' : ''}`}>
                                         <FileText className="w-5 h-5" />
                                     </div>
                                     <div>
@@ -1879,6 +2540,21 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                                     <StatusBadge status={doc.status} error={doc.error} />
                                     <div className="h-6 w-px bg-white/5"></div>
                                     <div className="flex items-center gap-1">
+                                        {/* Re-ingest button for error documents */}
+                                        {doc.status === 'error' && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleReingestDocument(doc);
+                                                }}
+                                                disabled={reingestingDocId === doc.id}
+                                                className="p-2 rounded-lg text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50 cursor-pointer relative z-50"
+                                                title="Re-ingest File"
+                                            >
+                                                {reingestingDocId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={(e) => handleDeleteFile(doc, e)}
@@ -1913,8 +2589,21 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                                 className="group p-5 rounded-xl bg-[#0E0E12] border border-white/5 hover:border-white/10 hover:bg-[#121216] transition-all flex flex-col justify-between aspect-square relative shadow-sm hover:shadow-md cursor-pointer"
                             >
                                 <div className="flex justify-between items-start">
-                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20">
-                                        <FileText className="w-5 h-5" />
+                                    <div className="flex items-center gap-2">
+                                        {/* Selection checkbox for all documents */}
+                                        <button
+                                            type="button"
+                                            onClick={(e) => toggleDocSelection(doc.id, e)}
+                                            className={`p-1 rounded transition-colors ${selectedDocIds.has(doc.id)
+                                                    ? doc.status === 'error' ? 'text-orange-400' : 'text-primary'
+                                                    : 'text-text-subtle hover:text-primary'
+                                                }`}
+                                        >
+                                            {selectedDocIds.has(doc.id) ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                                        </button>
+                                        <div className={`w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20 ${doc.status === 'error' ? 'border-red-500/20 text-red-400' : ''}`}>
+                                            <FileText className="w-5 h-5" />
+                                        </div>
                                     </div>
                                     <StatusBadge status={doc.status} error={doc.error} />
                                 </div>
@@ -1925,6 +2614,21 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
 
                                 {/* Hover Actions */}
                                 <div className="absolute top-4 right-14 opacity-0 group-hover:opacity-100 transition-opacity z-50 flex gap-1">
+                                    {/* Re-ingest button for error documents */}
+                                    {doc.status === 'error' && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleReingestDocument(doc);
+                                            }}
+                                            disabled={reingestingDocId === doc.id}
+                                            className="p-1.5 rounded bg-surface border border-white/10 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300 transition-colors cursor-pointer disabled:opacity-50"
+                                            title="Re-ingest File"
+                                        >
+                                            {reingestingDocId === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={(e) => {

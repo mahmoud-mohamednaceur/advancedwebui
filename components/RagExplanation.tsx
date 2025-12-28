@@ -17,7 +17,7 @@ const RagExplanation: React.FC<RagExplanationProps> = ({ onStart }) => {
         {/* Main Message & CTA */}
         <div className="flex flex-col items-center gap-8 max-w-3xl animate-fade-in-up">
           <p className="text-xl md:text-2xl text-white text-center leading-relaxed font-light">
-            The solution is built on top of <strong className="text-white">n8n</strong> and hosted on <strong className="text-white">Hetzner</strong> servers.
+            The solution is built on top of <strong className="text-white">n8n</strong> with enterprise-grade hosting.
           </p>
 
           <Button onClick={onStart} className="!bg-primary !text-background hover:!bg-primary/90 !h-14 !px-12 !text-lg !font-bold !rounded-md shadow-[0_0_20px_rgba(126,249,255,0.4)] hover:shadow-[0_0_30px_rgba(126,249,255,0.6)] transition-all transform hover:-translate-y-1">

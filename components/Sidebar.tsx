@@ -13,7 +13,8 @@ import {
   Search,
   MessageSquare,
   Command,
-  Server
+  Sparkles,
+  Activity
 } from 'lucide-react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { isAdmin, hasPagePermission } from '../utils/admin';
@@ -149,12 +150,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mode, activePage, onNavigate, onBackT
                   active={activePage === 'settings'}
                   onClick={() => onNavigate('settings')}
                 />
-                <SidebarItem
-                  icon={Server}
-                  label="Server Monitor"
-                  active={activePage === 'server'}
-                  onClick={() => onNavigate('server')}
-                />
+
               </>
             )}
           </>
@@ -187,6 +183,21 @@ const Sidebar: React.FC<SidebarProps> = ({ mode, activePage, onNavigate, onBackT
                 onClick={() => onNavigate('documents')}
               />
             )}
+
+            {/* AI Tools Section */}
+            <div className="text-[10px] font-bold text-text-subtle/50 uppercase tracking-widest mb-2 px-4 mt-6">AI Tools</div>
+            <SidebarItem
+              icon={Sparkles}
+              label="AI Enhancer"
+              active={activePage === 'ai-enhancer'}
+              onClick={() => onNavigate('ai-enhancer')}
+            />
+            <SidebarItem
+              icon={Activity}
+              label="Monitor"
+              active={activePage === 'monitor'}
+              onClick={() => onNavigate('monitor')}
+            />
 
             {hasPagePermission(user, 'search', notebookId) && (
               <div className="text-[10px] font-bold text-text-subtle/50 uppercase tracking-widest mb-2 px-4 mt-6">Playground</div>

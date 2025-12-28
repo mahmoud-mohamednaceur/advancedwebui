@@ -21,7 +21,7 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ icon: Icon, title, descriptio
 const Features: React.FC = () => {
   const features = [
     { icon: Network, title: "Automated Workflows", description: "Seamlessly connect data sources and automate complex RAG pipelines with n8n.", color: "text-primary" },
-    { icon: Shield, title: "Secure & Scalable", description: "Hetzner infrastructure ensures high availability, top-tier security, and scalability.", color: "text-secondary" },
+    { icon: Shield, title: "Secure & Scalable", description: "Enterprise-grade infrastructure ensures high availability, top-tier security, and scalability.", color: "text-secondary" },
     { icon: Search, title: "Precision Retrieval", description: "Advanced algorithms for relevant and accurate responses from your data.", color: "text-tertiary" },
     { icon: Lightbulb, title: "Contextual Answers", description: "Ground AI responses in your private data, eliminating hallucinations.", color: "text-primary" },
     { icon: Timer, title: "Boost Productivity", description: "Drastically reduce time spent searching for information and get insights faster.", color: "text-secondary" },
@@ -41,7 +41,7 @@ const Features: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {features.map((feature, index) => (
-          <FeatureCard 
+          <FeatureCard
             key={index}
             icon={feature.icon}
             title={feature.title}

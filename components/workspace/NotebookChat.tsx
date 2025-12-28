@@ -646,6 +646,46 @@ export const RetrievalPanel: React.FC<{
 
 // --- MAIN CHAT COMPONENT ---
 
+const ThinkingIndicator: React.FC = () => {
+    const [messageIndex, setMessageIndex] = useState(0);
+
+    // Fun loading messages as requested
+    const messages = [
+        "Our little hamster is thinking hard...",
+        "Exploring the vector store...",
+        "Consulting the neural nodes...",
+        "Generating brilliance, please wait...",
+        "Connecting the dots across documents...",
+        "Patience is a virtue (and required here)...",
+        "Searching for the perfect answer..."
+    ];
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setMessageIndex((prev) => (prev + 1) % messages.length);
+        }, 2500); // Change every 2.5s
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <div className="flex gap-4 animate-fade-in-up">
+            <div className="w-10 h-10 rounded-full bg-surface border border-primary/20 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(126,249,255,0.1)]">
+                <Bot className="w-5 h-5 text-primary animate-pulse" />
+            </div>
+            <div className="px-6 py-4 rounded-2xl bg-surface/80 border border-white/5 rounded-tl-none flex items-center gap-4 shadow-sm backdrop-blur-sm">
+                <div className="relative flex items-center justify-center w-5 h-5">
+                    <div className="absolute inset-0 border-2 border-primary/20 rounded-full"></div>
+                    <div className="absolute inset-0 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                </div>
+
+                <span key={messageIndex} className="text-sm text-gray-300 font-medium min-w-[240px] transition-all duration-500 animate-fade-in">
+                    {messages[messageIndex]}
+                </span>
+            </div>
+        </div>
+    );
+};
+
 const SAVE_HISTORY_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/e7d2f3b6-5029-4eb9-a115-f9f2b16eacb0-save-notebook-chat';
 const PULL_HISTORY_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/e7d2f3b6-5029-4eb9-a115-f9f2b16eacb0-pull-notebook-chat';
 const CLEAR_HISTORY_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/e7d2f3b6-5029-4eb9-a115-f9f2b16eacb0-clear-notebook-chat';
@@ -866,16 +906,134 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
             if (!retrievalRes.ok) throw new Error(`Retrieval Failed: ${retrievalRes.status}`);
             if (!agenticRes.ok) throw new Error(`Agent Generation Failed: ${agenticRes.status}`);
 
+            // Parse responses - handle potential NDJSON (newline-delimited JSON) or concatenated JSON
+            const parseJsonSafely = async (response: Response): Promise<any> => {
+                const text = await response.text();
+                if (!text.trim()) return {};
+
+                try {
+                    // Try standard JSON parse first
+                    return JSON.parse(text);
+                } catch (e) {
+                    // If that fails, try to extract the first valid JSON object
+                    // This handles NDJSON or concatenated JSON responses
+                    logger.debug("Standard JSON parse failed, trying to extract first JSON object", { error: e });
+
+                    // Try to find and parse the first complete JSON object or array
+                    let depth = 0;
+                    let inString = false;
+                    let escapeNext = false;
+                    let startIndex = -1;
+                    const firstChar = text.trim()[0];
+                    const isArray = firstChar === '[';
+                    const openBracket = isArray ? '[' : '{';
+                    const closeBracket = isArray ? ']' : '}';
+
+                    for (let i = 0; i < text.length; i++) {
+                        const char = text[i];
+
+                        if (escapeNext) {
+                            escapeNext = false;
+                            continue;
+                        }
+
+                        if (char === '\\' && inString) {
+                            escapeNext = true;
+                            continue;
+                        }
+
+                        if (char === '"' && !escapeNext) {
+                            inString = !inString;
+                            continue;
+                        }
+
+                        if (inString) continue;
+
+                        if (char === openBracket) {
+                            if (depth === 0) startIndex = i;
+                            depth++;
+                        } else if (char === closeBracket) {
+                            depth--;
+                            if (depth === 0 && startIndex !== -1) {
+                                // Found complete JSON object/array
+                                const jsonStr = text.substring(startIndex, i + 1);
+                                try {
+                                    return JSON.parse(jsonStr);
+                                } catch (parseErr) {
+                                    logger.warn("Failed to parse extracted JSON", { parseErr });
+                                    throw new Error(`Invalid JSON response: ${(e as Error).message}`);
+                                }
+                            }
+                        }
+                    }
+
+                    // If we couldn't extract JSON, throw the original error with more context
+                    throw new Error(`Invalid JSON response: ${(e as Error).message}`);
+                }
+            };
+
             const [retrievalData, agenticData] = await Promise.all([
-                retrievalRes.json(),
-                agenticRes.json()
+                parseJsonSafely(retrievalRes),
+                parseJsonSafely(agenticRes)
             ]);
 
             const normalizedChunks = normalizeChunks(retrievalData);
 
-            // Handle n8n agent response
-            const dataItem = Array.isArray(agenticData) ? agenticData[0] : agenticData;
-            const answerText = dataItem.output || dataItem.text || dataItem.answer || dataItem.content || "No text response generated.";
+            // Helper function to recursively find the output/text in nested structures
+            const extractAgentOutput = (data: any, depth: number = 0): string | null => {
+                if (!data || depth > 5) return null; // Prevent infinite recursion
+
+                // Direct string response
+                if (typeof data === 'string' && data.trim().length > 0) {
+                    return data;
+                }
+
+                // Check direct output fields (n8n AI Agent uses 'output')
+                const directFields = ['output', 'text', 'answer', 'content', 'response', 'message', 'result'];
+                for (const field of directFields) {
+                    if (data[field] && typeof data[field] === 'string' && data[field].trim().length > 0) {
+                        return data[field];
+                    }
+                }
+
+                // Check nested json wrapper (n8n pattern)
+                if (data.json) {
+                    const fromJson = extractAgentOutput(data.json, depth + 1);
+                    if (fromJson) return fromJson;
+                }
+
+                // Check data wrapper
+                if (data.data) {
+                    const fromData = extractAgentOutput(data.data, depth + 1);
+                    if (fromData) return fromData;
+                }
+
+                // Check if it's an array, try first item
+                if (Array.isArray(data) && data.length > 0) {
+                    const fromArray = extractAgentOutput(data[0], depth + 1);
+                    if (fromArray) return fromArray;
+                }
+
+                return null;
+            };
+
+            // Log the raw response structure for debugging
+            logger.debug("Agent response received", {
+                type: typeof agenticData,
+                isArray: Array.isArray(agenticData),
+                keys: agenticData && typeof agenticData === 'object' ? Object.keys(agenticData) : 'N/A',
+                raw: JSON.stringify(agenticData).substring(0, 500) // First 500 chars for debugging
+            });
+
+            // Extract the answer text using the helper
+            const answerText = extractAgentOutput(agenticData) || "No text response generated.";
+
+            // Log if we couldn't extract properly
+            if (answerText === "No text response generated.") {
+                logger.warn("Could not extract agent output from response", {
+                    fullResponse: JSON.stringify(agenticData)
+                });
+            }
 
             const assistantMsg: Message = {
                 id: crypto.randomUUID(),
@@ -1031,18 +1189,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                     })}
 
                     {/* Thinking Indicator */}
-                    {isProcessing && (
-                        <div className="flex gap-4 animate-fade-in-up">
-                            <div className="w-10 h-10 rounded-full bg-surface border border-primary/20 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(126,249,255,0.1)]">
-                                <Bot className="w-5 h-5 text-primary" />
-                            </div>
-                            <div className="px-6 py-4 rounded-2xl bg-surface/80 border border-white/5 rounded-tl-none flex items-center gap-1">
-                                <div className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '0s' }}></div>
-                                <div className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                                <div className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                            </div>
-                        </div>
-                    )}
+                    {isProcessing && <ThinkingIndicator />}
                     <div ref={messagesEndRef} />
                 </div>
 

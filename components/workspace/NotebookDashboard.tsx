@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Zap, Activity, Database, Cpu, Clock, AlertTriangle, CheckCircle, RefreshCw, MessageSquare, FileText, Search, Settings, Edit2, Save, X, Camera, ImageIcon, ExternalLink, Sparkles, Loader2, Server, HardDrive } from 'lucide-react';
+import { Activity, Database, MessageSquare, FileText, Search, Settings, Edit2, Save, X, Camera, ImageIcon, ExternalLink, Sparkles, Loader2 } from 'lucide-react';
 import { WorkspacePage } from '../../config';
 import Button from '../ui/Button';
 import { useUser } from '@clerk/clerk-react';
@@ -10,7 +10,8 @@ import { logger } from '../../utils/logger';
 const UPDATE_NOTEBOOK_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/22e943ae-6bc7-43b3-9ca4-16bdc715a84b-update-notebook-information';
 const NOTEBOOK_DETAILS_WEBHOOK_URL = 'https://n8nserver.sportnavi.de/webhook/22e943ae-6bc7-43b3-9ca4-16bdc715a84b-get-notebook-details-information';
 const ORCHESTRATOR_ID = '301f7482-1430-466d-9721-396564618751';
-const WS_URL = 'ws://localhost:3001/ws/logs';
+
+
 
 interface NotebookDashboardProps {
     notebookId: string;
@@ -63,25 +64,7 @@ const ActionCard = ({
     </div>
 );
 
-const MonitoringCard = ({ title, icon: Icon, children, className = "" }: { title: string, icon: any, children: React.ReactNode, className?: string }) => (
-    <div className={`bg-black/20 backdrop-blur-md border border-white/5 rounded-2xl p-6 ${className}`}>
-        <div className="flex items-center gap-2 mb-4">
-            <Icon className="w-5 h-5 text-primary" />
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">{title}</h3>
-        </div>
-        {children}
-    </div>
-);
 
-const StatRow = ({ label, value, subtext }: { label: string, value: string | number, subtext?: string }) => (
-    <div className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
-        <span className="text-text-subtle text-sm">{label}</span>
-        <div className="text-right">
-            <div className="text-white font-mono font-medium">{value}</div>
-            {subtext && <div className="text-[10px] text-text-subtle/70">{subtext}</div>}
-        </div>
-    </div>
-);
 
 const NotebookDashboard: React.FC<NotebookDashboardProps> = ({ notebookId, notebookName, notebookDescription, onNavigate }) => {
     const { user } = useUser();
@@ -93,65 +76,13 @@ const NotebookDashboard: React.FC<NotebookDashboardProps> = ({ notebookId, noteb
     const [coverImageBase64, setCoverImageBase64] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Monitoring State
-    const [monitoringData, setMonitoringData] = useState<any>(null);
-    const [isMonitoring, setIsMonitoring] = useState(false);
-    const wsRef = useRef<WebSocket | null>(null);
-
     // Real data state (Webhooks)
     const [status, setStatus] = useState<'checking' | 'online' | 'syncing' | 'error'>('checking');
     const [lastActivity, setLastActivity] = useState<string>('Checking...');
     const [docCount, setDocCount] = useState<number | null>(null);
 
-    // WebSocket Effect
-    useEffect(() => {
-        let reconnectTimer: any;
-
-        const connect = () => {
-            const ws = new WebSocket(WS_URL);
-            wsRef.current = ws;
-
-            ws.onopen = () => {
-                logger.debug('Connected to monitoring WS');
-                setIsMonitoring(true);
-                ws.send(JSON.stringify({ action: 'start_monitoring' }));
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'metrics') {
-                        setMonitoringData(data.data);
-                    }
-                } catch (e) {
-                    logger.error('Failed to parse WS message', e);
-                }
-            };
-
-            ws.onclose = () => {
-                logger.debug('Monitoring WS disconnected');
-                setIsMonitoring(false);
-                reconnectTimer = setTimeout(connect, 3000);
-            };
-
-            ws.onerror = (e) => {
-                logger.error('WS Error', e);
-                ws.close();
-            };
-        };
-
-        connect();
-
-        return () => {
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({ action: 'stop_monitoring' }));
-                wsRef.current.close();
-            }
-            clearTimeout(reconnectTimer);
-        };
-    }, []);
-
     // Poll for status (Webhook)
+
     useEffect(() => {
         let isMounted = true;
         const fetchStatus = async () => {
@@ -333,132 +264,7 @@ const NotebookDashboard: React.FC<NotebookDashboardProps> = ({ notebookId, noteb
                         {hasPagePermission(user, 'settings', notebookId) && <ActionCard icon={Settings} title="Configuration" description="System prompts, retrieval weights, and model parameters." colorClass="text-purple-400" bgGradient="bg-purple-500" onClick={() => onNavigate('settings')} delay="0.4s" />}
                     </div>
 
-                    {/* Infrastructure Monitoring Section */}
-                    {hasPagePermission(user, 'settings', notebookId) && (
-                        <div className="animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="h-px bg-white/10 flex-1"></div>
-                                <h2 className="text-xs font-bold text-text-subtle uppercase tracking-widest flex items-center gap-2">
-                                    <Server className="w-3 h-3" /> System Infrastructure
-                                </h2>
-                                <div className="h-px bg-white/10 flex-1"></div>
-                            </div>
 
-                            {monitoringData ? (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    {/* Queue Details */}
-                                    <MonitoringCard title="Redis Queue" icon={Database}>
-                                        {monitoringData.n8n ? (
-                                            <div className="space-y-4">
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <div className="bg-white/5 rounded-lg p-3 text-center">
-                                                        <div className="text-xs text-text-subtle mb-1">Queue Length</div>
-                                                        <div className="text-2xl font-bold text-blue-400">{monitoringData.n8n.queueLength}</div>
-                                                    </div>
-                                                    <div className="bg-white/5 rounded-lg p-3 text-center">
-                                                        <div className="text-xs text-text-subtle mb-1">Throughput</div>
-                                                        <div className="text-xl font-bold text-emerald-400">{monitoringData.n8n.metrics?.throughput} <span className="text-[10px]">/min</span></div>
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <div className="flex justify-between text-xs mb-1"><span>Waiting</span> <span>{monitoringData.n8n.waiting}</span></div>
-                                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-yellow-500/50" style={{ width: `${Math.min(100, (monitoringData.n8n.waiting / (monitoringData.n8n.queueLength || 1)) * 100)}%` }}></div></div>
-
-                                                    <div className="flex justify-between text-xs mb-1 pt-2"><span>Active</span> <span>{monitoringData.n8n.active}</span></div>
-                                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-emerald-500/50" style={{ width: `${Math.min(100, (monitoringData.n8n.active / (monitoringData.n8n.queueLength || 1)) * 100)}%` }}></div></div>
-
-                                                    <div className="flex justify-between text-xs mb-1 pt-2"><span>Failed (1h)</span> <span className="text-red-400">{monitoringData.n8n.failed}</span></div>
-                                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-red-500/50" style={{ width: `${Math.min(100, (monitoringData.n8n.failed / 50) * 100)}%` }}></div></div>
-                                                </div>
-                                            </div>
-                                        ) : <div className="text-xs text-text-subtle">No Queue Data</div>}
-                                    </MonitoringCard>
-
-                                    {/* Redis Stats */}
-                                    <MonitoringCard title="Redis Performance" icon={Zap}>
-                                        {monitoringData.redis ? (
-                                            <div className="space-y-0 text-sm">
-                                                <StatRow label="Memory Used" value={monitoringData.redis.memory?.used || 'N/A'} subtext={`Peak: ${monitoringData.redis.memory?.peak || 'N/A'}`} />
-                                                <StatRow label="Ops / Sec" value={monitoringData.redis.performance?.opsPerSec || 0} />
-                                                <StatRow label="Hit Rate" value={`${monitoringData.redis.performance?.hitRate || 0}%`} />
-                                                <StatRow label="Clients" value={monitoringData.redis.performance?.connectedClients || 0} />
-                                                <StatRow label="Frag Ratio" value={monitoringData.redis.memory?.fragmentation || 0} />
-                                            </div>
-                                        ) : <div className="text-xs text-text-subtle">Redis Unreachable</div>}
-                                    </MonitoringCard>
-
-                                    {/* Worker Pool */}
-                                    <MonitoringCard title={`Worker Pool (${monitoringData.workers?.count || 0})`} icon={Cpu} className="md:col-span-1">
-                                        {monitoringData.workers?.workers ? (
-                                            <div className="space-y-3 max-h-[220px] overflow-y-auto custom-scrollbar pr-2">
-                                                {monitoringData.workers.workers.map((worker: any, i: number) => (
-                                                    <div key={i} className="bg-white/5 rounded-lg p-3 border border-white/5">
-                                                        <div className="flex justify-between items-center mb-2">
-                                                            <span className="text-xs font-bold text-white truncate max-w-[100px]">{worker.name.replace('advanced-local-rag-app-', '').replace('n8n-', '')}</span>
-                                                            <span className="text-[10px] text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded-full border border-emerald-500/20">{worker.status}</span>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-2 text-xs text-text-subtle">
-                                                            <div>CPU: <span className="text-white">{worker.cpu}%</span></div>
-                                                            <div>Mem: <span className="text-white">{worker.memoryPercent}%</span></div>
-                                                            <div className="col-span-2 text-[10px] opacity-70">Uptime: {worker.uptime}</div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                {monitoringData.workers.workers.length === 0 && (
-                                                    <div className="text-center text-text-subtle text-xs py-4">No active workers found</div>
-                                                )}
-                                            </div>
-                                        ) : <div className="text-xs text-text-subtle">No Worker Data</div>}
-                                    </MonitoringCard>
-
-                                    {/* Current Jobs (Wide) */}
-                                    <div className="md:col-span-3 bg-black/20 backdrop-blur-md border border-white/5 rounded-2xl p-6">
-                                        <div className="flex items-center gap-2 mb-4">
-                                            <Clock className="w-5 h-5 text-secondary" />
-                                            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Active Jobs</h3>
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left text-xs">
-                                                <thead>
-                                                    <tr className="text-text-subtle border-b border-white/10">
-                                                        <th className="pb-2 font-medium">Job ID</th>
-                                                        <th className="pb-2 font-medium">Mode</th>
-                                                        <th className="pb-2 font-medium">Status</th>
-                                                        <th className="pb-2 font-medium">Started At</th>
-                                                        <th className="pb-2 font-medium">Retry Of</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-white/5">
-                                                    {monitoringData.n8n?.currentJobs && monitoringData.n8n.currentJobs.length > 0 ? (
-                                                        monitoringData.n8n.currentJobs.map((job: any) => (
-                                                            <tr key={job.id} className="group hover:bg-white/5 transition-colors">
-                                                                <td className="py-2.5 font-mono text-white">{job.id}</td>
-                                                                <td className="py-2.5 text-text-subtle">{job.mode}</td>
-                                                                <td className="py-2.5"><span className="text-blue-400">{job.status}</span></td>
-                                                                <td className="py-2.5 text-text-subtle">{new Date(job.startedAt).toLocaleString()}</td>
-                                                                <td className="py-2.5 text-text-subtle">{job.retry}</td>
-                                                            </tr>
-                                                        ))
-                                                    ) : (
-                                                        <tr>
-                                                            <td colSpan={5} className="py-4 text-center text-text-subtle italic">No active jobs running</td>
-                                                        </tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="h-32 flex items-center justify-center border border-white/5 rounded-2xl bg-white/5 bg-striped animate-pulse">
-                                    <div className="text-text-subtle flex items-center gap-2">
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Connecting to infrastructure...
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
