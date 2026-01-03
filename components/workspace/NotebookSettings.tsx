@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
-import { Save, Search, Sliders, Check, RefreshCw, Cpu, Activity, BookOpen, Lock, Binary, AlertTriangle, Webhook, Loader2 } from 'lucide-react';
+import { Save, Search, Sliders, Check, RefreshCw, Cpu, Activity, BookOpen, Lock, Binary, AlertTriangle, Webhook, Loader2, Timer } from 'lucide-react';
 import Button from '../ui/Button';
 import type { NotebookConfig, StrategyConfig } from '../../App';
 import { RETRIEVAL_STRATEGIES } from './constants';
@@ -153,6 +153,11 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
                     newConfig.avatarChat = data.avatar_chat_config;
                 }
 
+                // 6. Ingestion Timeout
+                if (data.ingestion_timeout_minutes !== undefined) {
+                    newConfig.ingestionTimeoutMinutes = Number(data.ingestion_timeout_minutes);
+                }
+
                 // Merge into parent state
                 if (Object.keys(newConfig).length > 0) {
                     onConfigChange({ ...config, ...newConfig });
@@ -240,6 +245,7 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
             active_strategy_id: config.activeStrategyId,
             strategies_config: strategiesConfig,
             avatar_chat_config: config.avatarChat || null, // Save avatar chat settings
+            ingestion_timeout_minutes: config.ingestionTimeoutMinutes ?? 10, // Save ingestion timeout (default 10 min)
             user_id: user?.id
         };
 
@@ -657,6 +663,59 @@ const NotebookSettings: React.FC<NotebookSettingsProps> = ({ notebookId, noteboo
                                         </p>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Section: Document Ingestion */}
+                <section className="pb-12">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+                            <Timer className="w-5 h-5" />
+                        </div>
+                        <h2 className="text-xl font-bold text-white">Document Ingestion</h2>
+                    </div>
+
+                    <div className="bg-surface/50 backdrop-blur-sm border border-white/10 rounded-2xl p-8 shadow-xl">
+                        <div className="space-y-6">
+                            {/* Timeout Slider */}
+                            <div className="bg-[#0E0E12] border border-white/10 rounded-xl p-6 space-y-6">
+                                <div className="flex justify-between items-end">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-bold text-text-subtle uppercase tracking-wider">Ingestion Timeout</label>
+                                        <span className="text-xs text-text-subtle opacity-70">Time before marking stuck documents as error</span>
+                                    </div>
+                                    <div className="px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                        <span className="text-lg font-mono font-bold text-amber-500">{config.ingestionTimeoutMinutes ?? 10} min</span>
+                                    </div>
+                                </div>
+
+                                <div className="relative pt-2 pb-1">
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="60"
+                                        step="1"
+                                        value={config.ingestionTimeoutMinutes ?? 10}
+                                        onChange={(e) => updateConfig({ ingestionTimeoutMinutes: parseInt(e.target.value) })}
+                                        className="w-full h-2 bg-surface rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                                    />
+                                    <div className="flex justify-between mt-3 text-[10px] text-text-subtle font-mono uppercase tracking-widest">
+                                        <span>1 min</span>
+                                        <span>30 min</span>
+                                        <span>60 min</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Info Box */}
+                            <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-5 flex gap-3 items-start">
+                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></div>
+                                <p className="text-xs text-amber-200/80 leading-relaxed">
+                                    Documents that remain in <strong>pending</strong> or <strong>processing</strong> state longer than this timeout will be automatically marked as <strong>error</strong>.
+                                    Increase this value for large documents or slow processing pipelines.
+                                </p>
                             </div>
                         </div>
                     </div>

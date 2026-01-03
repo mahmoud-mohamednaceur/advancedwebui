@@ -8,7 +8,8 @@ import {
     LayoutGrid, List as ListIcon, Database, ArrowRight, Trash2, FolderOpen,
     X, Cloud, Server, Upload, CheckSquare, Square, Share2, Settings2, FileUp, ChevronRight,
     ScanText, Sparkles, Zap, Brain, Code, FileType, HardDrive, Info, Scissors, Maximize, Minimize, Layers, Link, Sliders,
-    ArrowLeft, Activity, Table, Calendar, Check, Cpu, AlertTriangle, Terminal, ShieldAlert
+    ArrowLeft, Activity, Table, Calendar, Check, Cpu, AlertTriangle, Terminal, ShieldAlert,
+    Film, Image, Copy, ChevronDown, ChevronUp
 } from 'lucide-react';
 import Button from '../ui/Button';
 import type { NotebookConfig } from '../../App';
@@ -83,8 +84,9 @@ Output: 2022
     ctx_batch_size: '10'
 };
 
-// Timeout threshold for marking documents as error (5 minutes)
-const DOCUMENT_TIMEOUT_MS = 10 * 60 * 1000; // 5 minutes
+// Default timeout threshold for marking documents as error (10 minutes)
+// This can be overridden via config.ingestionTimeoutMinutes in Settings
+const DEFAULT_DOCUMENT_TIMEOUT_MS = 10 * 60 * 1000;
 
 const ORCHESTRATOR_ID = '301f7482-1430-466d-9721-396564618751';
 
@@ -125,6 +127,116 @@ const getFileTypeFromName = (fileName: string): string => {
         'tif': 'image/tiff'
     };
     return extension ? (mimeTypes[extension] || `application/${extension}`) : 'unknown';
+};
+
+// Get file extension from filename
+const getFileExtension = (fileName: string): string => {
+    if (!fileName) return 'unknown';
+    return fileName.split('.').pop()?.toLowerCase() || 'unknown';
+};
+
+// Define structured vs unstructured data types
+const STRUCTURED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'json', 'xml', 'ods'];
+const UNSTRUCTURED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'md', 'rtf', 'odt', 'odp', 'html', 'htm'];
+const MEDIA_EXTENSIONS = ['mp4', 'mp3', 'wav', 'avi', 'mov', 'webm', 'ogg', 'flac'];
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'webp', 'tiff', 'tif'];
+
+// Data category type
+type DataCategory = 'structured' | 'unstructured' | 'media' | 'images' | 'other';
+
+// Get data category for a file
+const getDataCategory = (fileName: string): DataCategory => {
+    const ext = getFileExtension(fileName);
+    if (STRUCTURED_EXTENSIONS.includes(ext)) return 'structured';
+    if (UNSTRUCTURED_EXTENSIONS.includes(ext)) return 'unstructured';
+    if (MEDIA_EXTENSIONS.includes(ext)) return 'media';
+    if (IMAGE_EXTENSIONS.includes(ext)) return 'images';
+    return 'other';
+};
+
+// Category display info
+const CATEGORY_INFO: Record<DataCategory, { label: string; icon: string; color: string; bgColor: string; borderColor: string; description: string }> = {
+    structured: {
+        label: 'Structured Data',
+        icon: 'Table',
+        color: 'text-emerald-400',
+        bgColor: 'bg-emerald-400/10',
+        borderColor: 'border-emerald-400/20',
+        description: 'Tabular data like spreadsheets and databases'
+    },
+    unstructured: {
+        label: 'Unstructured Data',
+        icon: 'FileText',
+        color: 'text-blue-400',
+        bgColor: 'bg-blue-400/10',
+        borderColor: 'border-blue-400/20',
+        description: 'Documents, PDFs, and text files'
+    },
+    media: {
+        label: 'Media Files',
+        icon: 'Film',
+        color: 'text-purple-400',
+        bgColor: 'bg-purple-400/10',
+        borderColor: 'border-purple-400/20',
+        description: 'Audio and video files'
+    },
+    images: {
+        label: 'Images',
+        icon: 'Image',
+        color: 'text-pink-400',
+        bgColor: 'bg-pink-400/10',
+        borderColor: 'border-pink-400/20',
+        description: 'Image files'
+    },
+    other: {
+        label: 'Other Files',
+        icon: 'File',
+        color: 'text-gray-400',
+        bgColor: 'bg-gray-400/10',
+        borderColor: 'border-gray-400/20',
+        description: 'Other file types'
+    }
+};
+
+// File type display info (for grouping within categories)
+const FILE_TYPE_INFO: Record<string, { label: string; color: string }> = {
+    xlsx: { label: 'Excel', color: 'text-green-400' },
+    xls: { label: 'Excel (Legacy)', color: 'text-green-400' },
+    csv: { label: 'CSV', color: 'text-emerald-400' },
+    json: { label: 'JSON', color: 'text-yellow-400' },
+    xml: { label: 'XML', color: 'text-orange-400' },
+    ods: { label: 'OpenDoc Spreadsheet', color: 'text-green-300' },
+    pdf: { label: 'PDF Document', color: 'text-red-400' },
+    doc: { label: 'Word (Legacy)', color: 'text-blue-400' },
+    docx: { label: 'Word Document', color: 'text-blue-400' },
+    ppt: { label: 'PowerPoint (Legacy)', color: 'text-orange-400' },
+    pptx: { label: 'PowerPoint', color: 'text-orange-400' },
+    txt: { label: 'Text File', color: 'text-gray-400' },
+    md: { label: 'Markdown', color: 'text-gray-300' },
+    rtf: { label: 'Rich Text', color: 'text-blue-300' },
+    odt: { label: 'OpenDoc Text', color: 'text-blue-300' },
+    odp: { label: 'OpenDoc Presentation', color: 'text-orange-300' },
+    html: { label: 'HTML', color: 'text-orange-400' },
+    htm: { label: 'HTML', color: 'text-orange-400' },
+    mp4: { label: 'MP4 Video', color: 'text-purple-400' },
+    mp3: { label: 'MP3 Audio', color: 'text-purple-300' },
+    wav: { label: 'WAV Audio', color: 'text-purple-300' },
+    avi: { label: 'AVI Video', color: 'text-purple-400' },
+    mov: { label: 'MOV Video', color: 'text-purple-400' },
+    webm: { label: 'WebM Video', color: 'text-purple-400' },
+    png: { label: 'PNG Image', color: 'text-pink-400' },
+    jpg: { label: 'JPEG Image', color: 'text-pink-400' },
+    jpeg: { label: 'JPEG Image', color: 'text-pink-400' },
+    gif: { label: 'GIF Image', color: 'text-pink-300' },
+    svg: { label: 'SVG Image', color: 'text-pink-300' },
+    webp: { label: 'WebP Image', color: 'text-pink-400' },
+    unknown: { label: 'Unknown', color: 'text-gray-500' }
+};
+
+// Get file type info with fallback
+const getFileTypeInfo = (fileName: string) => {
+    const ext = getFileExtension(fileName);
+    return FILE_TYPE_INFO[ext] || { label: ext.toUpperCase(), color: 'text-gray-400' };
 };
 
 interface IngestionConfig {
@@ -1728,6 +1840,8 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
     const [isBatchReingesting, setIsBatchReingesting] = useState(false);
     // Track batch delete in progress
     const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+    // Track collapsed categories in categorized view
+    const [collapsedCategories, setCollapsedCategories] = useState<Set<DataCategory>>(new Set());
 
     const fetchDocuments = async (isBackground = false) => {
         if (!isBackground) setIsLoading(true);
@@ -2164,6 +2278,9 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
         if (!hasActiveJobs) return;
 
         // Check for timed out documents
+        // Use configurable timeout from settings, or default to 10 minutes
+        const timeoutMs = (config.ingestionTimeoutMinutes ?? 10) * 60 * 1000;
+
         const checkTimeouts = () => {
             const now = Date.now();
             documents.forEach(doc => {
@@ -2171,12 +2288,12 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                     const createdAt = new Date(doc.added).getTime();
                     const elapsedMs = now - createdAt;
 
-                    if (elapsedMs > DOCUMENT_TIMEOUT_MS && !timedOutDocIds.has(doc.id)) {
+                    if (elapsedMs > timeoutMs && !timedOutDocIds.has(doc.id)) {
                         logger.debug('Document timeout detected', {
                             docId: doc.id,
                             fileName: doc.name,
                             elapsedMs,
-                            thresholdMs: DOCUMENT_TIMEOUT_MS
+                            thresholdMs: timeoutMs
                         });
                         markDocumentAsError(doc);
                     }
@@ -2193,7 +2310,7 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
         }, 3000);
 
         return () => clearInterval(interval);
-    }, [documents, timedOutDocIds]);
+    }, [documents, timedOutDocIds, config.ingestionTimeoutMinutes]);
 
     const handleIngestionStarted = () => {
         setIsLoading(true);
@@ -2329,6 +2446,66 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
     const filteredDocs = documents.filter(doc =>
         doc.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    // Find duplicates (same file name)
+    const fileNameCounts = filteredDocs.reduce((acc, doc) => {
+        const baseName = doc.name.toLowerCase();
+        acc[baseName] = (acc[baseName] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const duplicateNames = new Set(
+        Object.entries(fileNameCounts)
+            .filter(([_, count]: [string, number]) => count > 1)
+            .map(([name]) => name)
+    );
+
+    // Categorize documents
+    const categorizedDocs = filteredDocs.reduce((acc, doc) => {
+        const category = getDataCategory(doc.name);
+        if (!acc[category]) acc[category] = [];
+        acc[category].push(doc);
+        return acc;
+    }, {} as Record<DataCategory, Document[]>);
+
+    // Sort documents within each category by file extension, then by name
+    Object.keys(categorizedDocs).forEach(category => {
+        categorizedDocs[category as DataCategory]?.sort((a, b) => {
+            const extA = getFileExtension(a.name);
+            const extB = getFileExtension(b.name);
+            if (extA !== extB) return extA.localeCompare(extB);
+            return a.name.localeCompare(b.name);
+        });
+    });
+
+    // Category order for display
+    const categoryOrder: DataCategory[] = ['structured', 'unstructured', 'media', 'images', 'other'];
+    const activeCategories = categoryOrder.filter(cat => categorizedDocs[cat]?.length > 0);
+
+    // Toggle category collapse - state is declared at top of component
+    const toggleCategoryCollapse = (category: DataCategory) => {
+        setCollapsedCategories(prev => {
+            const next = new Set(prev);
+            if (next.has(category)) {
+                next.delete(category);
+            } else {
+                next.add(category);
+            }
+            return next;
+        });
+    };
+
+    // Helper to get icon component for category
+    const getCategoryIcon = (category: DataCategory) => {
+        switch (category) {
+            case 'structured': return Table;
+            case 'unstructured': return FileText;
+            case 'media': return Film;
+            case 'images': return Image;
+            default: return FileIcon;
+        }
+    };
+
 
     return (
         <div className="flex flex-col h-full bg-[#050508] relative overflow-hidden animate-fade-in">
@@ -2505,80 +2682,163 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                         {searchQuery && <p className="text-xs mt-2">Try adjusting your search query.</p>}
                     </div>
                 ) : viewMode === 'list' ? (
-                    <div className="space-y-3">
-                        {filteredDocs.map((doc) => (
-                            <div
-                                key={doc.id}
-                                onClick={() => doc.status === 'error' ? setSelectedErrorDoc(doc) : setSelectedDetailDoc(doc)}
-                                className="group relative flex items-center justify-between p-4 rounded-xl bg-[#0E0E12] border border-white/5 hover:border-white/10 hover:bg-[#121216] transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
-                            >
-                                <div className="flex items-center gap-4">
-                                    {/* Selection checkbox for all documents */}
-                                    <button
-                                        type="button"
-                                        onClick={(e) => toggleDocSelection(doc.id, e)}
-                                        className={`p-1 rounded transition-colors ${selectedDocIds.has(doc.id)
-                                            ? doc.status === 'error' ? 'text-orange-400' : 'text-primary'
-                                            : 'text-text-subtle hover:text-primary'
-                                            }`}
+                    <div className="space-y-6">
+                        {/* Summary stats */}
+                        <div className="flex flex-wrap gap-3 mb-2">
+                            {activeCategories.map(category => {
+                                const info = CATEGORY_INFO[category];
+                                const count = categorizedDocs[category]?.length || 0;
+                                return (
+                                    <div
+                                        key={category}
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${info.bgColor} ${info.borderColor} border text-xs font-medium`}
                                     >
-                                        {selectedDocIds.has(doc.id) ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
-                                    </button>
-                                    <div className={`w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-text-subtle group-hover:text-primary transition-colors border border-white/5 group-hover:border-primary/20 ${doc.status === 'error' ? 'border-red-500/20 text-red-400' : ''}`}>
-                                        <FileText className="w-5 h-5" />
+                                        <span className={info.color}>{info.label}</span>
+                                        <span className={`${info.color} opacity-60`}>({count})</span>
                                     </div>
-                                    <div>
-                                        <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors">{doc.name}</h3>
-                                        <div className="flex items-center gap-2 text-xs text-text-subtle mt-1">
-                                            <span className="font-mono opacity-50 bg-black/30 px-1.5 rounded text-[10px]">{doc.jobId ? `Job: ${doc.jobId.slice(0, 8)}` : 'ID: N/A'}</span>
-                                            <span className="w-1 h-1 rounded-full bg-white/20"></span>
-                                            <span>{new Date(doc.updated || doc.added).toLocaleString()}</span>
+                                );
+                            })}
+                            {duplicateNames.size > 0 && (
+                                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border-amber-500/20 border text-xs font-medium">
+                                    <Copy className="w-3 h-3 text-amber-400" />
+                                    <span className="text-amber-400">Duplicates</span>
+                                    <span className="text-amber-400 opacity-60">({duplicateNames.size})</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Categorized documents */}
+                        {activeCategories.map(category => {
+                            const info = CATEGORY_INFO[category];
+                            const docs = categorizedDocs[category] || [];
+                            const CategoryIcon = getCategoryIcon(category);
+                            const isCollapsed = collapsedCategories.has(category);
+
+                            return (
+                                <div key={category} className={`rounded-2xl border ${info.borderColor} bg-surface/30 overflow-hidden`}>
+                                    {/* Category Header */}
+                                    <button
+                                        onClick={() => toggleCategoryCollapse(category)}
+                                        className={`w-full flex items-center justify-between p-4 ${info.bgColor} hover:bg-white/5 transition-colors`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-lg ${info.bgColor} ${info.color}`}>
+                                                <CategoryIcon className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <h3 className={`font-bold ${info.color}`}>{info.label}</h3>
+                                                <p className="text-xs text-text-subtle">{info.description}</p>
+                                            </div>
                                         </div>
-                                    </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`text-sm font-mono ${info.color}`}>{docs.length} files</span>
+                                            {isCollapsed ? <ChevronDown className="w-5 h-5 text-text-subtle" /> : <ChevronUp className="w-5 h-5 text-text-subtle" />}
+                                        </div>
+                                    </button>
+
+                                    {/* Category Documents */}
+                                    {!isCollapsed && (
+                                        <div className="p-3 space-y-2">
+                                            {docs.map((doc) => {
+                                                const typeInfo = getFileTypeInfo(doc.name);
+                                                const isDuplicate = duplicateNames.has(doc.name.toLowerCase());
+
+                                                return (
+                                                    <div
+                                                        key={doc.id}
+                                                        onClick={() => doc.status === 'error' ? setSelectedErrorDoc(doc) : setSelectedDetailDoc(doc)}
+                                                        className={`group relative flex items-center justify-between p-4 rounded-xl bg-[#0E0E12] border ${isDuplicate ? 'border-amber-500/30' : 'border-white/5'} hover:border-white/10 hover:bg-[#121216] transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer`}
+                                                    >
+                                                        <div className="flex items-center gap-4">
+                                                            {/* Selection checkbox */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => toggleDocSelection(doc.id, e)}
+                                                                className={`p-1 rounded transition-colors ${selectedDocIds.has(doc.id)
+                                                                    ? doc.status === 'error' ? 'text-orange-400' : 'text-primary'
+                                                                    : 'text-text-subtle hover:text-primary'
+                                                                    }`}
+                                                            >
+                                                                {selectedDocIds.has(doc.id) ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                                                            </button>
+
+                                                            {/* File icon with category color */}
+                                                            <div className={`w-10 h-10 rounded-lg ${info.bgColor} flex items-center justify-center ${info.color} group-hover:scale-105 transition-transform border ${info.borderColor} ${doc.status === 'error' ? 'border-red-500/20 text-red-400' : ''}`}>
+                                                                <CategoryIcon className="w-5 h-5" />
+                                                            </div>
+
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2">
+                                                                    <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">{doc.name}</h3>
+                                                                    {/* File type badge */}
+                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${typeInfo.color} bg-black/30`}>
+                                                                        {getFileExtension(doc.name)}
+                                                                    </span>
+                                                                    {/* Duplicate indicator */}
+                                                                    {isDuplicate && (
+                                                                        <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase text-amber-400 bg-amber-400/10 border border-amber-400/20">
+                                                                            <Copy className="w-2.5 h-2.5" />
+                                                                            Duplicate
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-2 text-xs text-text-subtle mt-1">
+                                                                    <span className="font-mono opacity-50 bg-black/30 px-1.5 rounded text-[10px]">{doc.jobId ? `Job: ${doc.jobId.slice(0, 8)}` : 'ID: N/A'}</span>
+                                                                    <span className="w-1 h-1 rounded-full bg-white/20"></span>
+                                                                    <span>{new Date(doc.updated || doc.added).toLocaleString()}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-4">
+                                                            <StatusBadge status={doc.status} error={doc.error} />
+                                                            <div className="h-6 w-px bg-white/5"></div>
+                                                            <div className="flex items-center gap-1">
+                                                                {/* Re-ingest button for error documents */}
+                                                                {doc.status === 'error' && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleReingestDocument(doc);
+                                                                        }}
+                                                                        disabled={reingestingDocId === doc.id}
+                                                                        className="p-2 rounded-lg text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50 cursor-pointer relative z-50"
+                                                                        title="Re-ingest File"
+                                                                    >
+                                                                        {reingestingDocId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => handleDeleteFile(doc, e)}
+                                                                    disabled={deletingFileId === doc.id}
+                                                                    className="p-2 rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50 cursor-pointer relative z-50"
+                                                                    title="Delete File"
+                                                                >
+                                                                    {deletingFileId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        doc.status === 'error' ? setSelectedErrorDoc(doc) : setSelectedDetailDoc(doc);
+                                                                    }}
+                                                                    className={`p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${doc.status === 'error' ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-text-subtle hover:text-white hover:bg-white/10'}`}
+                                                                    title={doc.status === 'error' ? undefined : "View Ingestion Details"}
+                                                                >
+                                                                    {doc.status === 'error' ? <AlertTriangle className="w-4 h-4" /> : <Info className="w-4 h-4" />}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="flex items-center gap-4">
-                                    <StatusBadge status={doc.status} error={doc.error} />
-                                    <div className="h-6 w-px bg-white/5"></div>
-                                    <div className="flex items-center gap-1">
-                                        {/* Re-ingest button for error documents */}
-                                        {doc.status === 'error' && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleReingestDocument(doc);
-                                                }}
-                                                disabled={reingestingDocId === doc.id}
-                                                className="p-2 rounded-lg text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50 cursor-pointer relative z-50"
-                                                title="Re-ingest File"
-                                            >
-                                                {reingestingDocId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                                            </button>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={(e) => handleDeleteFile(doc, e)}
-                                            disabled={deletingFileId === doc.id}
-                                            className="p-2 rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50 cursor-pointer relative z-50"
-                                            title="Delete File"
-                                        >
-                                            {deletingFileId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                doc.status === 'error' ? setSelectedErrorDoc(doc) : setSelectedDetailDoc(doc);
-                                            }}
-                                            className={`p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${doc.status === 'error' ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-text-subtle hover:text-white hover:bg-white/10'}`}
-                                            title={doc.status === 'error' ? undefined : "View Ingestion Details"}
-                                        >
-                                            {doc.status === 'error' ? <AlertTriangle className="w-4 h-4" /> : <Info className="w-4 h-4" />}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -2595,8 +2855,8 @@ const NotebookDocuments: React.FC<NotebookDocumentsProps> = ({ notebookId, noteb
                                             type="button"
                                             onClick={(e) => toggleDocSelection(doc.id, e)}
                                             className={`p-1 rounded transition-colors ${selectedDocIds.has(doc.id)
-                                                    ? doc.status === 'error' ? 'text-orange-400' : 'text-primary'
-                                                    : 'text-text-subtle hover:text-primary'
+                                                ? doc.status === 'error' ? 'text-orange-400' : 'text-primary'
+                                                : 'text-text-subtle hover:text-primary'
                                                 }`}
                                         >
                                             {selectedDocIds.has(doc.id) ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}

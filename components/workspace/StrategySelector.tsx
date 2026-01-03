@@ -1,19 +1,29 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check, Layers } from 'lucide-react';
-import { RETRIEVAL_STRATEGIES } from './constants';
+import { ChevronDown, Check, Layers, Database, Lock } from 'lucide-react';
+import { RETRIEVAL_STRATEGIES, StrategyCategory, getStrategiesByCategory } from './constants';
 
 interface StrategySelectorProps {
     currentStrategyId: string;
     onSelect: (id: string) => void;
+    chatMode?: 'rag' | 'sql'; // Optional: When provided, restricts to matching strategies
     className?: string;
 }
 
-export const StrategySelector: React.FC<StrategySelectorProps> = ({ currentStrategyId, onSelect, className = '' }) => {
+export const StrategySelector: React.FC<StrategySelectorProps> = ({ currentStrategyId, onSelect, chatMode, className = '' }) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
-    const activeStrategy = RETRIEVAL_STRATEGIES.find(s => s.id === currentStrategyId) || RETRIEVAL_STRATEGIES[0];
+
+    // Filter strategies based on chat mode
+    const availableStrategies = chatMode
+        ? getStrategiesByCategory(chatMode as StrategyCategory)
+        : RETRIEVAL_STRATEGIES;
+
+    // For SQL mode, we have only one strategy - show a locked indicator
+    const isLocked = chatMode === 'sql';
+
+    const activeStrategy = RETRIEVAL_STRATEGIES.find(s => s.id === currentStrategyId) || availableStrategies[0];
 
     // Close on click outside
     useEffect(() => {
@@ -30,13 +40,41 @@ export const StrategySelector: React.FC<StrategySelectorProps> = ({ currentStrat
         };
     }, [isOpen]);
 
+    // If locked to SQL mode, show a simpler, non-interactive display
+    if (isLocked) {
+        return (
+            <div className={`relative ${className}`}>
+                <div className="flex items-center gap-3 px-3 py-2 rounded-xl border bg-primary/10 border-primary/20 text-xs font-medium min-w-[220px] justify-between cursor-default">
+                    <div className="flex items-center gap-3 truncate min-w-0">
+                        <div className="p-1.5 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 text-primary shrink-0">
+                            <Database className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex flex-col items-start gap-0.5 overflow-hidden min-w-0">
+                            <span className="text-[9px] font-bold uppercase tracking-wider opacity-50 leading-none text-primary">SQL Mode</span>
+                            <span className="truncate leading-none font-bold text-[11px] w-full text-left text-white">{activeStrategy.name}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-primary/60">
+                        <Lock className="w-3 h-3" />
+                    </div>
+                </div>
+                {/* Tooltip on hover */}
+                <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block">
+                    <div className="px-2 py-1 text-[10px] bg-surface text-text-subtle rounded-lg border border-white/10 whitespace-nowrap">
+                        SQL mode uses the dedicated SQL agent
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className={`relative ${className}`} ref={containerRef}>
-            <button 
+            <button
                 onClick={() => setIsOpen(!isOpen)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-xl border transition-all text-xs font-medium group min-w-[220px] justify-between
-                    ${isOpen 
-                        ? 'bg-surface-highlight border-white/20 text-white shadow-lg' 
+                    ${isOpen
+                        ? 'bg-surface-highlight border-white/20 text-white shadow-lg'
                         : 'bg-white/5 border-white/10 text-text-subtle hover:text-white hover:bg-white/10 hover:border-white/20'
                     }`}
             >
@@ -55,12 +93,12 @@ export const StrategySelector: React.FC<StrategySelectorProps> = ({ currentStrat
             {isOpen && (
                 <div className="absolute top-full mt-2 left-0 w-[320px] bg-[#0F0F13]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.7)] z-[100] overflow-hidden animate-fade-in-up origin-top-left ring-1 ring-white/5">
                     <div className="px-4 py-3 bg-white/[0.02] border-b border-white/5 flex items-center justify-between">
-                         <span className="text-[10px] font-bold text-text-subtle uppercase tracking-wider">Select Retrieval Strategy</span>
-                         <span className="text-[10px] text-text-subtle/50 font-mono">{RETRIEVAL_STRATEGIES.length} Available</span>
+                        <span className="text-[10px] font-bold text-text-subtle uppercase tracking-wider">Select Retrieval Strategy</span>
+                        <span className="text-[10px] text-text-subtle/50 font-mono">{availableStrategies.length} Available</span>
                     </div>
-                    
+
                     <div className="max-h-[360px] overflow-y-auto custom-scrollbar p-2 space-y-1">
-                        {RETRIEVAL_STRATEGIES.map(strategy => {
+                        {availableStrategies.map(strategy => {
                             const isActive = strategy.id === currentStrategyId;
                             const isDisabled = strategy.disabled;
 
@@ -75,8 +113,8 @@ export const StrategySelector: React.FC<StrategySelectorProps> = ({ currentStrat
                                         }
                                     }}
                                     className={`w-full text-left px-3 py-3 rounded-xl text-xs flex items-start gap-3 group transition-all duration-200 border border-transparent relative overflow-hidden
-                                        ${isActive 
-                                            ? 'bg-primary/10 border-primary/20' 
+                                        ${isActive
+                                            ? 'bg-primary/10 border-primary/20'
                                             : isDisabled
                                                 ? 'opacity-40 cursor-not-allowed bg-transparent'
                                                 : 'hover:bg-white/5 hover:border-white/5'
@@ -86,11 +124,10 @@ export const StrategySelector: React.FC<StrategySelectorProps> = ({ currentStrat
                                     {isActive && <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-primary shadow-[0_0_8px_rgba(126,249,255,0.6)]"></div>}
 
                                     {/* Icon Placeholder or Radio */}
-                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
-                                        isActive 
-                                            ? 'border-primary bg-primary text-black shadow-neon-primary' 
-                                            : 'border-white/10 group-hover:border-white/30 bg-white/5'
-                                    }`}>
+                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${isActive
+                                        ? 'border-primary bg-primary text-black shadow-neon-primary'
+                                        : 'border-white/10 group-hover:border-white/30 bg-white/5'
+                                        }`}>
                                         {isActive && <Check className="w-3 h-3" />}
                                     </div>
 
@@ -109,7 +146,7 @@ export const StrategySelector: React.FC<StrategySelectorProps> = ({ currentStrat
                             );
                         })}
                     </div>
-                    
+
                     {/* Footer / Tip */}
                     <div className="px-4 py-3 bg-white/[0.02] border-t border-white/5 text-[10px] text-text-subtle flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></div>

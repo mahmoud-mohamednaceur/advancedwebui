@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import {
     Layers, Sparkles, Bot, User, FileText, ChevronDown, ChevronRight,
@@ -12,12 +12,24 @@ import Button from '../ui/Button';
 import { NotebookConfig } from '../../App';
 import { StrategySelector } from './StrategySelector';
 import { logger } from '../../utils/logger';
+import ConversationSidebar, { Conversation } from './ConversationSidebar';
+import ChatModeSelector, { ChatMode } from './ChatModeSelector';
+import AgentStepsPanel from './AgentStepsPanel';
 
 // --- Types ---
 
 export interface DynamicChunk {
     id: string;
     [key: string]: any;
+}
+
+// Agent metadata for SQL mode - tracks tool calls and SQL queries
+interface AgentMetadata {
+    tool_calls?: Array<{ tool: string; input: any; success: boolean }>;
+    sql_executed?: string;
+    query_results?: any;
+    datasets_discovered?: Array<{ file_id: string; file_name: string }>;
+    timestamp?: string;
 }
 
 interface Message {
@@ -27,6 +39,7 @@ interface Message {
     citations?: DynamicChunk[]; // Array of retrieved chunks used for this answer
     strategyId?: string;        // ID of the strategy used (for custom rendering)
     rawRetrieval?: any;         // Raw data for debugging/fallback
+    agentMetadata?: AgentMetadata; // Agent steps and SQL info (for SQL mode)
     timestamp: Date;
     isError?: boolean;
 }
@@ -690,6 +703,13 @@ const SAVE_HISTORY_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/e7d2f3b6-50
 const PULL_HISTORY_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/e7d2f3b6-5029-4eb9-a115-f9f2b16eacb0-pull-notebook-chat';
 const CLEAR_HISTORY_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/e7d2f3b6-5029-4eb9-a115-f9f2b16eacb0-clear-notebook-chat';
 
+// Conversation Management Webhooks
+const LIST_CONVERSATIONS_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/316bfbae-5b0d-42f1-aa10-4ed50ec007ee-conversations-list';
+const CREATE_CONVERSATION_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/316bfbae-5b0d-42f1-aa10-4ed50ec007ee-conversations-create';
+const DELETE_CONVERSATION_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/316bfbae-5b0d-42f1-aa10-4ed50ec007ee-conversations-delete';
+const RENAME_CONVERSATION_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/316bfbae-5b0d-42f1-aa10-4ed50ec007ee-conversations-rename';
+const TOGGLE_PIN_CONVERSATION_WEBHOOK = 'https://n8nserver.sportnavi.de/webhook/316bfbae-5b0d-42f1-aa10-4ed50ec007ee-conversations-toggle-pin';
+
 interface NotebookChatProps {
     config: NotebookConfig;
     notebookId: string;
@@ -706,8 +726,35 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [activeMessage, setActiveMessage] = useState<Message | null>(null);
 
+    // Conversation Management State
+    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+    const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+    // Chat Mode Selector State
+    const [showModeSelector, setShowModeSelector] = useState(false);
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Derive current conversation's chat mode (with fallback)
+    const activeConversation = conversations.find(c => c.conversation_id === activeConversationId);
+    // Get chat mode - if not set, infer from title (SQL in title = sql mode)
+    const currentChatMode: 'rag' | 'sql' = activeConversation?.chat_mode ||
+        ((activeConversation?.title || '').toLowerCase().includes('sql') ? 'sql' : 'rag');
+
+    // Debug: Log chat mode for troubleshooting
+    useEffect(() => {
+        if (activeConversation) {
+            logger.debug('Active conversation chat_mode', {
+                conversationId: activeConversation.conversation_id,
+                title: activeConversation.title,
+                chat_mode: activeConversation.chat_mode,
+                derivedMode: currentChatMode
+            });
+        }
+    }, [activeConversation, currentChatMode]);
 
     // --- NORMALIZE CHUNKS (For Chat Citations Only) ---
     const normalizeChunks = (rawData: any): any[] => {
@@ -726,13 +773,297 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
         return Array.from(unique.values());
     };
 
-    // Fetch History
+    // --- CONVERSATION MANAGEMENT ---
+
+    // Fetch all conversations for this notebook
+    const fetchConversations = useCallback(async () => {
+        if (!notebookId || !user?.id) return;
+
+        setIsLoadingConversations(true);
+        try {
+            const response = await fetch(LIST_CONVERSATIONS_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    notebook_id: notebookId,
+                    user_id: user.id,
+                    include_archived: false
+                })
+            });
+
+            const text = await response.text();
+            let data: Conversation[] = [];
+            if (text) {
+                try {
+                    const parsed = JSON.parse(text);
+                    data = Array.isArray(parsed) ? parsed : (parsed.data ? parsed.data : [parsed]);
+                    // Unwrap n8n format if present and normalize chat_mode
+                    data = data.map((item: any) => {
+                        const conv = item.json ? item.json : item;
+                        // Ensure chat_mode is always set - infer from title if not present
+                        if (!conv.chat_mode) {
+                            // If title contains "SQL" (case-insensitive), assume it's an SQL conversation
+                            const titleLower = (conv.title || '').toLowerCase();
+                            conv.chat_mode = titleLower.includes('sql') ? 'sql' : 'rag';
+                            logger.debug('Inferred chat_mode from title', {
+                                title: conv.title,
+                                inferred_mode: conv.chat_mode
+                            });
+                        }
+                        return conv;
+                    });
+                } catch (e) {
+                    logger.warn("Invalid JSON response from conversations webhook");
+                }
+            }
+
+            setConversations(data);
+
+            // If no active conversation and conversations exist, select the most recent one
+            if (!activeConversationId && data.length > 0) {
+                // Prefer pinned conversations, then most recent
+                const pinnedFirst = [...data].sort((a, b) => {
+                    if (a.is_pinned && !b.is_pinned) return -1;
+                    if (!a.is_pinned && b.is_pinned) return 1;
+                    const dateA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+                    const dateB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+                    return dateB - dateA;
+                });
+                setActiveConversationId(pinnedFirst[0].conversation_id);
+            }
+        } catch (err) {
+            logger.error("Failed to fetch conversations", err);
+        } finally {
+            setIsLoadingConversations(false);
+        }
+    }, [notebookId, user?.id, activeConversationId]);
+
+    // Show mode selector when creating new conversation
+    const handleCreateConversation = () => {
+        if (!notebookId || !user?.id) return;
+        setShowModeSelector(true);
+    };
+
+    // Actually create conversation after mode is selected
+    const handleModeSelect = async (mode: ChatMode) => {
+        if (!notebookId || !user?.id) return;
+        setShowModeSelector(false);
+
+        logger.debug('Creating new conversation with mode', { mode, notebookId });
+
+        try {
+            const response = await fetch(CREATE_CONVERSATION_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    notebook_id: notebookId,
+                    user_id: user.id,
+                    title: mode === 'sql' ? 'SQL Analysis' : 'New Chat',
+                    chat_mode: mode
+                })
+            });
+
+            const text = await response.text();
+            if (text) {
+                const parsed = JSON.parse(text);
+                const newConv = parsed.json ? parsed.json : (Array.isArray(parsed) ? parsed[0] : parsed);
+
+                if (newConv?.conversation_id) {
+                    // IMPORTANT: Always explicitly set chat_mode to what the user selected
+                    // The backend might not return it, so we force it to the selected mode
+                    newConv.chat_mode = mode;
+
+                    logger.debug('New conversation created', {
+                        conversationId: newConv.conversation_id,
+                        title: newConv.title,
+                        chat_mode: newConv.chat_mode,
+                        apiReturnedMode: parsed.json?.chat_mode || parsed.chat_mode || 'not returned'
+                    });
+
+                    setConversations(prev => [newConv, ...prev]);
+                    setActiveConversationId(newConv.conversation_id);
+                    setMessages([]); // Clear messages for new conversation
+                    setActiveMessage(null);
+
+                    // Auto-switch to appropriate strategy for the mode
+                    if (mode === 'sql') {
+                        onConfigChange({ ...config, activeStrategyId: 'agentic-sql' });
+                    } else {
+                        // For RAG mode, ensure we're NOT on agentic-sql
+                        if (config.activeStrategyId === 'agentic-sql') {
+                            const ragStrategies = Object.keys(config.strategies).filter(s => s !== 'agentic-sql');
+                            if (ragStrategies.length > 0) {
+                                onConfigChange({ ...config, activeStrategyId: ragStrategies[0] });
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            logger.error("Failed to create conversation", err);
+        }
+    };
+
+    // Delete a conversation
+    const handleDeleteConversation = async (conversationId: string) => {
+        if (!user?.id) return;
+
+        // Optimistic Update: Remove locally first
+        const previousConversations = [...conversations];
+        setConversations(prev => prev.filter(c => c.conversation_id !== conversationId));
+
+        // If we deleted the active conversation, switch to another immediately
+        if (activeConversationId === conversationId) {
+            const remaining = previousConversations.filter(c => c.conversation_id !== conversationId);
+            if (remaining.length > 0) {
+                // Determine next best conversation (e.g., next one in the list or previous)
+                setActiveConversationId(remaining[0].conversation_id);
+            } else {
+                setActiveConversationId(null);
+                setMessages([]);
+            }
+            setActiveMessage(null);
+        }
+
+        try {
+            await fetch(DELETE_CONVERSATION_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    conversation_id: conversationId,
+                    user_id: user.id
+                })
+            });
+        } catch (err) {
+            logger.error("Failed to delete conversation", err);
+            // Rollback on error
+            setConversations(previousConversations);
+            if (activeConversationId === conversationId) {
+                // If we switched away, we might want to switch back or just accept the state
+                // Ideally, we'd restore the selection logic too, but just restoring the list is critical.
+            }
+        }
+    };
+
+    // Rename a conversation
+    const handleRenameConversation = async (conversationId: string, newTitle: string) => {
+        if (!user?.id) return;
+
+        try {
+            await fetch(RENAME_CONVERSATION_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    conversation_id: conversationId,
+                    user_id: user.id,
+                    new_title: newTitle
+                })
+            });
+
+            setConversations(prev => prev.map(c =>
+                c.conversation_id === conversationId
+                    ? { ...c, title: newTitle }
+                    : c
+            ));
+        } catch (err) {
+            logger.error("Failed to rename conversation", err);
+        }
+    };
+
+    // Toggle pin status
+    const handleTogglePin = async (conversationId: string) => {
+        if (!user?.id) return;
+
+        try {
+            const response = await fetch(TOGGLE_PIN_CONVERSATION_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    conversation_id: conversationId,
+                    user_id: user.id
+                })
+            });
+
+            const text = await response.text();
+            let newPinStatus = true;
+            if (text) {
+                try {
+                    const parsed = JSON.parse(text);
+                    newPinStatus = parsed.is_pinned ?? parsed.json?.is_pinned ?? !conversations.find(c => c.conversation_id === conversationId)?.is_pinned;
+                } catch (e) {
+                    // Toggle locally
+                    const conv = conversations.find(c => c.conversation_id === conversationId);
+                    newPinStatus = !conv?.is_pinned;
+                }
+            }
+
+            setConversations(prev => prev.map(c =>
+                c.conversation_id === conversationId
+                    ? { ...c, is_pinned: newPinStatus }
+                    : c
+            ));
+        } catch (err) {
+            logger.error("Failed to toggle pin", err);
+        }
+    };
+
+    // Select a conversation
+    const handleSelectConversation = (conversationId: string) => {
+        if (conversationId !== activeConversationId) {
+            setActiveConversationId(conversationId);
+            setMessages([]); // Clear messages, will be fetched by useEffect
+            setActiveMessage(null);
+            setIsLoadingHistory(true);
+
+            // Auto-switch strategy based on conversation mode
+            const conversation = conversations.find(c => c.conversation_id === conversationId);
+            // Get chat mode with fallback - infer from title if needed
+            const convChatMode = conversation?.chat_mode ||
+                ((conversation?.title || '').toLowerCase().includes('sql') ? 'sql' : 'rag');
+
+            logger.debug('Selecting conversation', {
+                conversationId,
+                title: conversation?.title,
+                chat_mode: conversation?.chat_mode,
+                inferredMode: convChatMode,
+                currentStrategy: config.activeStrategyId
+            });
+
+            if (convChatMode === 'sql' && config.activeStrategyId !== 'agentic-sql') {
+                logger.debug('Switching to agentic-sql strategy for SQL conversation');
+                onConfigChange({ ...config, activeStrategyId: 'agentic-sql' });
+            } else if (convChatMode === 'rag' && config.activeStrategyId === 'agentic-sql') {
+                // Switch back to a RAG strategy (default to fusion or first available)
+                const ragStrategies = Object.keys(config.strategies).filter(s => s !== 'agentic-sql');
+                if (ragStrategies.length > 0) {
+                    logger.debug('Switching to RAG strategy', { newStrategy: ragStrategies[0] });
+                    onConfigChange({ ...config, activeStrategyId: ragStrategies[0] });
+                }
+            }
+        }
+    };
+
+    // Fetch conversations on mount or notebook change
+    useEffect(() => {
+        if (notebookId && user?.id) {
+            fetchConversations();
+        }
+    }, [notebookId, user?.id]);
+
+    // Fetch History for active conversation
     useEffect(() => {
         let isMounted = true;
 
         const fetchHistory = async () => {
+            if (!activeConversationId) {
+                setMessages([]);
+                setIsLoadingHistory(false);
+                return;
+            }
+
             logger.debug('Fetching chat history', {
                 notebookId,
+                conversationId: activeConversationId,
                 userId: user?.id,
                 userEmail: user?.primaryEmailAddress?.emailAddress
             });
@@ -742,7 +1073,11 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                 const response = await fetch(PULL_HISTORY_WEBHOOK, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ notebook_id: notebookId, user_id: user?.id })
+                    body: JSON.stringify({
+                        notebook_id: notebookId,
+                        user_id: user?.id,
+                        conversation_id: activeConversationId
+                    })
                 });
 
                 const text = await response.text();
@@ -790,13 +1125,16 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
             }
         };
 
-        if (notebookId && user?.id) {
+        if (notebookId && user?.id && activeConversationId) {
             setMessages([]);
             fetchHistory();
+        } else if (!activeConversationId) {
+            setMessages([]);
+            setIsLoadingHistory(false);
         }
 
         return () => { isMounted = false; };
-    }, [notebookId, user?.id]); // Added user?.id dependency
+    }, [notebookId, user?.id, activeConversationId]); // Added activeConversationId dependency
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -809,9 +1147,15 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
     }, [isLoadingHistory]);
 
     const saveMessageToHistory = (msg: Message, runMetadata?: any) => {
+        if (!activeConversationId) {
+            logger.warn("Cannot save message: no active conversation");
+            return;
+        }
+
         const payload = {
             id: msg.id,
             notebook_id: notebookId,
+            conversation_id: activeConversationId,
             role: msg.role,
             content: msg.content,
             citations: msg.citations || [],
@@ -827,13 +1171,25 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-        }).catch(err => logger.error("Failed to save chat history", err));
+        })
+            .then(() => {
+                // Update local conversation message count
+                setConversations(prev => prev.map(c =>
+                    c.conversation_id === activeConversationId
+                        ? { ...c, message_count: c.message_count + 1, last_message_at: new Date().toISOString() }
+                        : c
+                ));
+            })
+            .catch(err => logger.error("Failed to save chat history", err));
     };
 
     const executeClearHistory = async () => {
+        if (!activeConversationId) return;
+
         setShowClearConfirm(false);
         const payload = {
             notebook_id: notebookId,
+            conversation_id: activeConversationId,
             timestamp: new Date().toISOString(),
             user_id: user?.id
         };
@@ -845,6 +1201,12 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
             });
             setMessages([]);
             setActiveMessage(null);
+            // Update local conversation message count
+            setConversations(prev => prev.map(c =>
+                c.conversation_id === activeConversationId
+                    ? { ...c, message_count: 0 }
+                    : c
+            ));
         } catch (error) {
             logger.error("Network Error Clearing History", error);
         }
@@ -869,9 +1231,15 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
 
         try {
             const activeStrategy = config.strategies[config.activeStrategyId];
+            const isAgenticSQL = config.activeStrategyId === 'agentic-sql';
 
-            if (!activeStrategy.retrievalWebhook) throw new Error("Retrieval Webhook URL is missing.");
-            if (!activeStrategy.agenticWebhook) throw new Error("Agentic Webhook URL is missing.");
+            // For agentic-sql, we only need the agentic webhook (it does both planning and execution)
+            if (isAgenticSQL) {
+                if (!activeStrategy.agenticWebhook) throw new Error("Agentic Webhook URL is missing.");
+            } else {
+                if (!activeStrategy.retrievalWebhook) throw new Error("Retrieval Webhook URL is missing.");
+                if (!activeStrategy.agenticWebhook) throw new Error("Agentic Webhook URL is missing.");
+            }
 
             const commonConfig = {
                 notebook_id: notebookId,
@@ -883,29 +1251,6 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                 user_id: user?.id
             };
 
-            const retrievalPayload = { question: userMsg.content, ...commonConfig };
-            const agenticPayload = {
-                question: userMsg.content,
-                chat_history: messages.map(m => ({ role: m.role, content: m.content })),
-                ...commonConfig
-            };
-
-            const [retrievalRes, agenticRes] = await Promise.all([
-                fetch(activeStrategy.retrievalWebhook, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(retrievalPayload)
-                }),
-                fetch(activeStrategy.agenticWebhook, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(agenticPayload)
-                })
-            ]);
-
-            if (!retrievalRes.ok) throw new Error(`Retrieval Failed: ${retrievalRes.status}`);
-            if (!agenticRes.ok) throw new Error(`Agent Generation Failed: ${agenticRes.status}`);
-
             // Parse responses - handle potential NDJSON (newline-delimited JSON) or concatenated JSON
             const parseJsonSafely = async (response: Response): Promise<any> => {
                 const text = await response.text();
@@ -916,10 +1261,8 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                     return JSON.parse(text);
                 } catch (e) {
                     // If that fails, try to extract the first valid JSON object
-                    // This handles NDJSON or concatenated JSON responses
                     logger.debug("Standard JSON parse failed, trying to extract first JSON object", { error: e });
 
-                    // Try to find and parse the first complete JSON object or array
                     let depth = 0;
                     let inString = false;
                     let escapeNext = false;
@@ -931,51 +1274,73 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
 
                     for (let i = 0; i < text.length; i++) {
                         const char = text[i];
-
-                        if (escapeNext) {
-                            escapeNext = false;
-                            continue;
-                        }
-
-                        if (char === '\\' && inString) {
-                            escapeNext = true;
-                            continue;
-                        }
-
-                        if (char === '"' && !escapeNext) {
-                            inString = !inString;
-                            continue;
-                        }
-
+                        if (escapeNext) { escapeNext = false; continue; }
+                        if (char === '\\' && inString) { escapeNext = true; continue; }
+                        if (char === '"' && !escapeNext) { inString = !inString; continue; }
                         if (inString) continue;
-
-                        if (char === openBracket) {
-                            if (depth === 0) startIndex = i;
-                            depth++;
-                        } else if (char === closeBracket) {
+                        if (char === openBracket) { if (depth === 0) startIndex = i; depth++; }
+                        else if (char === closeBracket) {
                             depth--;
                             if (depth === 0 && startIndex !== -1) {
-                                // Found complete JSON object/array
                                 const jsonStr = text.substring(startIndex, i + 1);
-                                try {
-                                    return JSON.parse(jsonStr);
-                                } catch (parseErr) {
-                                    logger.warn("Failed to parse extracted JSON", { parseErr });
-                                    throw new Error(`Invalid JSON response: ${(e as Error).message}`);
-                                }
+                                try { return JSON.parse(jsonStr); }
+                                catch (parseErr) { throw new Error(`Invalid JSON response: ${(e as Error).message}`); }
                             }
                         }
                     }
-
-                    // If we couldn't extract JSON, throw the original error with more context
                     throw new Error(`Invalid JSON response: ${(e as Error).message}`);
                 }
             };
 
-            const [retrievalData, agenticData] = await Promise.all([
-                parseJsonSafely(retrievalRes),
-                parseJsonSafely(agenticRes)
-            ]);
+            let retrievalData: any = {};
+            let agenticData: any = {};
+
+            if (isAgenticSQL) {
+                // For agentic-sql: Single call - agent handles everything
+                const agenticPayload = {
+                    question: userMsg.content,
+                    chat_history: messages.map(m => ({ role: m.role, content: m.content })),
+                    ...commonConfig
+                };
+
+                const agenticRes = await fetch(activeStrategy.agenticWebhook, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(agenticPayload)
+                });
+
+                if (!agenticRes.ok) throw new Error(`Agent Generation Failed: ${agenticRes.status}`);
+                agenticData = await parseJsonSafely(agenticRes);
+            } else {
+                // For other strategies: Parallel calls to retrieval and agentic webhooks
+                const retrievalPayload = { question: userMsg.content, ...commonConfig };
+                const agenticPayload = {
+                    question: userMsg.content,
+                    chat_history: messages.map(m => ({ role: m.role, content: m.content })),
+                    ...commonConfig
+                };
+
+                const [retrievalRes, agenticRes] = await Promise.all([
+                    fetch(activeStrategy.retrievalWebhook, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(retrievalPayload)
+                    }),
+                    fetch(activeStrategy.agenticWebhook, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(agenticPayload)
+                    })
+                ]);
+
+                if (!retrievalRes.ok) throw new Error(`Retrieval Failed: ${retrievalRes.status}`);
+                if (!agenticRes.ok) throw new Error(`Agent Generation Failed: ${agenticRes.status}`);
+
+                [retrievalData, agenticData] = await Promise.all([
+                    parseJsonSafely(retrievalRes),
+                    parseJsonSafely(agenticRes)
+                ]);
+            }
 
             const normalizedChunks = normalizeChunks(retrievalData);
 
@@ -1035,6 +1400,20 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                 });
             }
 
+            // Extract agent metadata for SQL mode (tool calls, SQL queries, etc.)
+            let agentMetadata: AgentMetadata | undefined;
+            if (isAgenticSQL) {
+                // Try to extract metadata from the response
+                const unwrapped = agenticData?.json || agenticData;
+                agentMetadata = {
+                    tool_calls: unwrapped?.metadata?.tool_calls || [],
+                    sql_executed: unwrapped?.metadata?.sql_executed || null,
+                    query_results: unwrapped?.metadata?.query_results || null,
+                    datasets_discovered: unwrapped?.metadata?.datasets_discovered || null,
+                    timestamp: unwrapped?.metadata?.timestamp || new Date().toISOString()
+                };
+            }
+
             const assistantMsg: Message = {
                 id: crypto.randomUUID(),
                 role: 'assistant',
@@ -1042,11 +1421,12 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                 citations: normalizedChunks,
                 strategyId: config.activeStrategyId, // Save Strategy ID
                 rawRetrieval: retrievalData, // Save Raw Data for dedicated renderers
+                agentMetadata: agentMetadata, // Agent steps for SQL mode
                 timestamp: new Date()
             };
 
             setMessages(prev => [...prev, assistantMsg]);
-            saveMessageToHistory(assistantMsg, { chunks_count: normalizedChunks.length });
+            saveMessageToHistory(assistantMsg, { chunks_count: normalizedChunks.length, agent_metadata: agentMetadata });
 
         } catch (error: any) {
             logger.error("Pipeline Error", error);
@@ -1073,114 +1453,176 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
 
     return (
         <div className="flex h-full animate-fade-in relative">
+            {/* Chat Mode Selector Modal */}
+            <ChatModeSelector
+                isOpen={showModeSelector}
+                onClose={() => setShowModeSelector(false)}
+                onSelect={handleModeSelect}
+            />
 
-            {/* LEFT: Chat Area */}
-            <div className={`flex flex-col h-full transition-all duration-300 ${activeMessage ? 'w-2/3 border-r border-white/5' : 'w-full'}`}>
+            {/* LEFT: Conversation Sidebar */}
+            <ConversationSidebar
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                isLoading={isLoadingConversations}
+                isCollapsed={isSidebarCollapsed}
+                onSelectConversation={handleSelectConversation}
+                onCreateConversation={handleCreateConversation}
+                onDeleteConversation={handleDeleteConversation}
+                onRenameConversation={handleRenameConversation}
+                onTogglePin={handleTogglePin}
+                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            />
 
-                {/* Header - Added z-50 for Dropdown Stacking */}
-                <div className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-[#050508]/80 backdrop-blur-sm shrink-0 relative z-50">
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                            <span className="text-xs font-bold text-white">
-                                {config.activeStrategyId === 'agentic-sql' ? 'SQL Agent Active' : 'RAG Agent Active'}
+            {/* CENTER: Chat Area */}
+            <div className={`flex flex-col h-full transition-all duration-300 flex-1 relative ${activeMessage ? 'border-r border-white/5' : ''}`}>
+
+                {/* Header - Floating Glass */}
+                <div className="absolute top-0 left-0 right-0 h-20 px-8 flex items-center justify-between z-50 bg-gradient-to-b from-[#050508] via-[#050508]/90 to-transparent pointer-events-none">
+                    <div className={`pointer-events-auto flex items-center gap-4 backdrop-blur-xl border px-4 py-2 rounded-2xl shadow-xl ${currentChatMode === 'sql'
+                        ? 'bg-violet-500/10 border-violet-500/20'
+                        : 'bg-white/5 border-white/10'
+                        }`}>
+                        <div className="flex items-center gap-2">
+                            <div className="relative flex h-2.5 w-2.5">
+                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentChatMode === 'sql' ? 'bg-violet-400' : 'bg-emerald-400'
+                                    }`}></span>
+                                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${currentChatMode === 'sql' ? 'bg-violet-500' : 'bg-emerald-500'
+                                    }`}></span>
+                            </div>
+                            <span className={`text-xs font-bold uppercase tracking-wider ${currentChatMode === 'sql' ? 'text-violet-300' : 'text-white'
+                                }`}>
+                                {currentChatMode === 'sql' ? 'SQL Agent' : 'RAG Agent'}
                             </span>
                         </div>
 
-                        {/* Strategy Selector */}
                         <div className="h-4 w-px bg-white/10"></div>
                         <StrategySelector
                             currentStrategyId={config.activeStrategyId}
                             onSelect={(id) => onConfigChange({ ...config, activeStrategyId: id })}
+                            chatMode={currentChatMode}
                         />
-
-                        <div className="h-4 w-px bg-white/10"></div>
-                        <span className="text-xs font-mono text-text-subtle">{config.inference.model}</span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="pointer-events-auto flex items-center gap-2">
                         {showClearConfirm ? (
-                            <div className="flex items-center gap-2 animate-fade-in-right">
-                                <span className="text-xs text-red-400 font-bold">Delete History?</span>
-                                <button onClick={executeClearHistory} className="px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs border border-red-500/30">Yes</button>
-                                <button onClick={() => setShowClearConfirm(false)} className="px-2 py-1 rounded bg-white/5 text-text-subtle hover:text-white text-xs">No</button>
+                            <div className="flex items-center gap-2 animate-fade-in bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-xl backdrop-blur-md">
+                                <span className="text-xs text-red-200 font-medium">Delete History?</span>
+                                <button onClick={executeClearHistory} className="px-3 py-1 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-xs font-bold transition-colors">Yes</button>
+                                <button onClick={() => setShowClearConfirm(false)} className="px-3 py-1 rounded-lg hover:bg-white/10 text-white/70 hover:text-white text-xs transition-colors">No</button>
                             </div>
                         ) : (
                             <button
                                 onClick={() => setShowClearConfirm(true)}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-medium group"
+                                className="group p-2.5 rounded-xl hover:bg-white/5 text-text-subtle hover:text-red-400 transition-all border border-transparent hover:border-white/5"
                                 title="Clear History"
                             >
-                                <Trash2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                                <span className="hidden sm:inline">Clear History</span>
+                                <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
                             </button>
                         )}
                     </div>
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8 z-0">
-                    {messages.length === 0 && !isLoadingHistory && (
-                        <div className="h-full flex flex-col items-center justify-center text-center opacity-50 select-none">
-                            <div className="w-24 h-24 rounded-full bg-surface border border-white/10 flex items-center justify-center mb-6">
-                                <Bot className="w-10 h-10 text-primary" />
+                <div className="flex-1 overflow-y-auto custom-scrollbar pt-24 pb-8 px-8 space-y-10 z-0 scroll-smooth">
+                    {/* No conversation selected */}
+                    {!activeConversationId && !isLoadingConversations && (
+                        <div className="h-full flex flex-col items-center justify-center text-center select-none pb-20 animate-fade-in-up">
+                            <div className="relative group mb-8">
+                                <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-1000"></div>
+                                <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 flex items-center justify-center shadow-2xl backdrop-blur-sm group-hover:scale-105 transition-transform duration-500">
+                                    <Bot className="w-12 h-12 text-white/80 group-hover:text-primary transition-colors duration-500" />
+                                </div>
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-3 tracking-tight">Welcome</h3>
+                            <p className="text-text-subtle max-w-sm mb-8 leading-relaxed">Select an existing conversation from the sidebar or start a new thread to explore your data.</p>
+                            <button
+                                onClick={handleCreateConversation}
+                                className="group relative flex items-center gap-3 px-8 py-4 rounded-2xl bg-primary text-background font-bold text-sm transition-all hover:shadow-[0_0_40px_-10px_rgba(126,249,255,0.6)] overflow-hidden"
+                            >
+                                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                <Sparkles className="w-4 h-4" />
+                                <span className="relative">Start New Chat</span>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Conversation selected but empty */}
+                    {activeConversationId && messages.length === 0 && !isLoadingHistory && (
+                        <div className="h-full flex flex-col items-center justify-center text-center select-none pb-20 animate-fade-in-up">
+                            <div className="w-20 h-20 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 shadow-xl backdrop-blur-sm">
+                                <Bot className="w-10 h-10 text-primary opacity-80" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-2">Ready to assist</h3>
-                            <p className="text-text-subtle max-w-sm">Ask questions about your documents. I'll cite my sources for every answer.</p>
+                            <p className="text-text-subtle/70 max-w-sm text-sm">I can analyze your documents and provide cited answers. Ask me anything.</p>
                         </div>
                     )}
 
                     {isLoadingHistory && (
-                        <div className="h-full flex items-center justify-center">
-                            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                        <div className="h-full flex flex-col items-center justify-center gap-4">
+                            <Loader2 className="w-8 h-8 text-primary/50 animate-spin" />
+                            <span className="text-xs uppercase tracking-widest text-text-subtle/50 animate-pulse">Loading History</span>
                         </div>
                     )}
 
-                    {messages.map((msg) => {
-                        // Calculate retrieval count dynamically by checking citations AND raw data fallback
-                        // This ensures the button state matches the retrieval panel content
+                    {messages.map((msg, index) => {
                         const sourceCount = msg.citations?.length || (msg.rawRetrieval ? findDocsDeep(msg.rawRetrieval).length : 0);
+                        const isLast = index === messages.length - 1;
 
                         return (
-                            <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''} animate-fade-in-up`}>
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-lg border ${msg.role === 'user' ? 'bg-[#1A1A21] border-white/10' : 'bg-surface border-primary/20 shadow-[0_0_15px_rgba(126,249,255,0.1)]'}`}>
-                                    {msg.role === 'user' ? <User className="w-5 h-5 text-text-subtle" /> : <Bot className="w-5 h-5 text-primary" />}
+                            <div key={msg.id} className={`group flex gap-6 ${msg.role === 'user' ? 'flex-row-reverse' : ''} animate-fade-in-up`}>
+                                {/* Avatar */}
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-lg border backdrop-blur-sm mt-1 transition-all duration-300 ${msg.role === 'user'
+                                    ? 'bg-[#1A1A21] border-white/10 group-hover:border-white/20 text-white'
+                                    : 'bg-primary/10 border-primary/20 group-hover:border-primary/40 text-primary shadow-[0_0_20px_-5px_rgba(126,249,255,0.2)]'
+                                    }`}>
+                                    {msg.role === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
                                 </div>
 
-                                <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                    <div className={`px-6 py-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user'
-                                        ? 'bg-[#1A1A21] border border-white/10 text-white rounded-tr-none'
-                                        : 'bg-surface/80 border border-white/5 text-gray-200 rounded-tl-none backdrop-blur-md'
+                                <div className={`flex flex-col gap-2 max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                    {/* Sender Name */}
+                                    <span className="text-[10px] uppercase tracking-widest text-text-subtle/50 px-1">
+                                        {msg.role === 'user' ? 'You' : 'Assistant'}
+                                    </span>
+
+                                    {/* Message Bubble */}
+                                    <div className={`px-6 py-4 rounded-2xl shadow-sm text-base leading-7 whitespace-pre-wrap transition-all duration-300 ${msg.role === 'user'
+                                        ? 'bg-[#1A1A21] border border-white/10 text-white/90 rounded-tr-sm hover:border-white/20'
+                                        : 'bg-white/5 border border-white/5 text-gray-100 rounded-tl-sm backdrop-blur-md hover:bg-white/[0.07]'
                                         } ${msg.isError ? 'border-red-500/30 bg-red-500/5 text-red-200' : ''}`}>
                                         {msg.content}
                                     </div>
 
-                                    {/* Citation / Context Button for Assistant */}
+                                    {/* Agent Steps Panel - Shows for SQL mode messages */}
+                                    {msg.role === 'assistant' && msg.agentMetadata && (
+                                        <AgentStepsPanel metadata={msg.agentMetadata} />
+                                    )}
+
+                                    {/* Footer Actions / Info */}
                                     {msg.role === 'assistant' && !msg.isError && (
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-3 mt-1 pl-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                             <button
                                                 onClick={() => setActiveMessage(activeMessage?.id === msg.id ? null : msg)}
                                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${activeMessage?.id === msg.id
-                                                    ? 'bg-primary/10 text-primary border-primary/30 shadow-[0_0_10px_rgba(126,249,255,0.2)]'
-                                                    : 'bg-white/5 text-text-subtle border-white/5 hover:border-primary/30 hover:text-primary hover:bg-primary/5'
+                                                    ? 'bg-primary/20 text-primary border-primary/30 shadow-[0_0_15px_-5px_rgba(126,249,255,0.4)]'
+                                                    : 'bg-white/5 text-text-subtle border-white/5 hover:border-primary/30 hover:text-primary hover:bg-primary/10'
                                                     }`}
                                             >
                                                 {sourceCount > 0 ? (
                                                     <>
-                                                        <Sparkles className="w-3 h-3" />
+                                                        <Sparkles className="w-3.5 h-3.5" />
                                                         <span>{sourceCount} Sources</span>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <AlertOctagon className="w-3 h-3 text-amber-500" />
-                                                        <span>No Context</span>
+                                                        <AlertOctagon className="w-3.5 h-3.5 text-amber-500" />
+                                                        <span>No Sources</span>
                                                     </>
                                                 )}
                                             </button>
-                                            {msg.strategyId && (
-                                                <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded text-text-subtle border border-white/5 uppercase tracking-wider">{msg.strategyId}</span>
-                                            )}
-                                            <span className="text-[10px] text-text-subtle opacity-50">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="text-[10px] text-text-subtle opacity-40">
+                                                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
                                         </div>
                                     )}
                                 </div>
@@ -1188,18 +1630,23 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                         )
                     })}
 
-                    {/* Thinking Indicator */}
-                    {isProcessing && <ThinkingIndicator />}
-                    <div ref={messagesEndRef} />
+                    {isProcessing && (
+                        <div className="pl-16 animate-fade-in">
+                            <ThinkingIndicator />
+                        </div>
+                    )}
+                    <div ref={messagesEndRef} className="h-4" />
                 </div>
 
                 {/* Input Area */}
-                <div className="p-6 pt-0 bg-transparent relative z-20">
-                    <div className="relative group">
-                        <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-secondary/10 blur-xl rounded-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
-                        <div className="relative flex items-center bg-[#0E0E12] border border-white/20 rounded-2xl p-2 shadow-2xl focus-within:border-primary/50 transition-colors">
-                            <div className="pl-4 text-primary">
-                                <Bot className="w-5 h-5" />
+                <div className="absolute bottom-6 left-0 right-0 px-8 flex justify-center z-50 pointer-events-none">
+                    <div className="w-full max-w-4xl pointer-events-auto relative group">
+                        {/* Glow Effect */}
+                        <div className="absolute -inset-1 bg-gradient-to-r from-primary/30 via-purple-500/20 to-secondary/30 rounded-3xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-700"></div>
+
+                        <div className="relative flex items-center bg-[#0E0E12]/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-2 shadow-2xl ring-1 ring-white/5 transition-all duration-300 group-focus-within:border-primary/30 group-focus-within:ring-primary/20 group-focus-within:bg-[#0E0E12]">
+                            <div className="pl-4 text-text-subtle group-focus-within:text-primary transition-colors duration-300">
+                                <Bot className="w-6 h-6" />
                             </div>
                             <input
                                 ref={inputRef}
@@ -1207,26 +1654,33 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ config, notebookId, noteboo
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Ask anything..."
-                                className="flex-1 bg-transparent border-none text-white px-4 py-3 focus:outline-none text-sm placeholder-text-subtle/50"
-                                disabled={isProcessing}
+                                placeholder={activeConversationId ? "Ask a question about your documents..." : "Start a conversation to begin..."}
+                                className="flex-1 bg-transparent border-none text-white px-4 py-4 focus:outline-none text-base font-medium placeholder-text-subtle/40"
+                                disabled={isProcessing || !activeConversationId}
                             />
-                            <Button
-                                onClick={() => handleSendMessage()}
-                                disabled={!input.trim() || isProcessing}
-                                variant="primary"
-                                className="!rounded-xl !h-10 !px-4 disabled:opacity-50"
-                            >
-                                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                            </Button>
+                            <div className="pr-2">
+                                <Button
+                                    onClick={() => handleSendMessage()}
+                                    disabled={!input.trim() || isProcessing || !activeConversationId}
+                                    variant="primary"
+                                    className={`!rounded-xl !h-10 !px-4 transition-all duration-300 ${input.trim() ? 'opacity-100 translate-x-0' : 'opacity-50 translate-x-2'}`}
+                                >
+                                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
+                                </Button>
+                            </div>
                         </div>
+                        {activeConversationId && (
+                            <div className="absolute -bottom-6 left-0 right-0 text-center opacity-0 group-focus-within:opacity-100 transition-opacity duration-500 delay-100">
+                                <span className="text-[10px] text-text-subtle/50 uppercase tracking-widest">Press Enter to send</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* RIGHT: Retrieval Inspector */}
             {activeMessage && (
-                <div className="w-1/3 h-full bg-[#0A0A0F] border-l border-white/10 flex flex-col shadow-2xl animate-fade-in-right z-30 relative">
+                <div className="w-96 h-full bg-[#0A0A0F] border-l border-white/10 flex flex-col shadow-2xl animate-fade-in-right z-30 relative shrink-0">
                     <div className="h-16 border-b border-white/5 flex items-center justify-between px-6 shrink-0 bg-[#050508]">
                         <div className="flex items-center gap-2">
                             <Layers className="w-4 h-4 text-secondary" />
